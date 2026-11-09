@@ -1,0 +1,10 @@
+# Development, testing and tooling (not installed in production images)
+
+pytest>=8.2
+pytest-asyncio>=0.23
+pytest-cov>=5.0
+testcontainers[postgres,redis,localstack]>=4.7   # real Postgres/Redis/SQS in tests
+ruff>=0.5                        # lint + format
+mypy>=1.10
+pre-commit>=3.7
+locust>=2.29    
