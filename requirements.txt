@@ -1,10 +1,8 @@
-# Development, testing and tooling (not installed in production images)
-
-pytest>=8.2
-pytest-asyncio>=0.23
-pytest-cov>=5.0
-testcontainers[postgres,redis,localstack]>=4.7   # real Postgres/Redis/SQS in tests
-ruff>=0.5                        # lint + format
-mypy>=1.10
-pre-commit>=3.7
-locust>=2.29    
+# Runtime libraries (more are added feature by feature; see the design doc)
+sqlalchemy[asyncio]>=2.0
+alembic>=1.13
+asyncpg>=0.29          # async driver used by the app
+psycopg[binary]>=3.1   # sync driver, used by Alembic and the COPY loader
+pydantic>=2.7
+pydantic-settings>=2.3
+pgvector>=0.3

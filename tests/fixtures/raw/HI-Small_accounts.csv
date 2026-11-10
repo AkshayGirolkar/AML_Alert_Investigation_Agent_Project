@@ -1,0 +1,6 @@
+Bank Name,Bank ID,Account Number,Entity ID,Entity Name
+Alpha Bank #1,10,ACC000001,ENT1,Corporation #1
+Alpha Bank #1,10,ACC000002,ENT2,Individual #2
+Beta Bank #2,220,ACC000003,ENT3,Sole Proprietorship #3
+Beta Bank #2,220,ACC000001,ENT4,Partnership #4
+Gamma Bank #3,3208,ACC000005,ENT2,Individual #2
