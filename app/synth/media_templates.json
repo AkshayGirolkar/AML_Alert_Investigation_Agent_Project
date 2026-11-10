@@ -1,0 +1,665 @@
+{
+  "version": 1,
+  "_notes": "All people, companies, outlets and agencies are fictional. Body = one opening + two details + one closing, picked by a seeded RNG. Placeholders are filled in Python: {name} full name of the subject, {short} surname or first word of a company name, {city}, {country}, {amount} and {amount2} formatted money strings, {year}, {month}, {outlet}, {authority}, {court}, {industry}, {counterparty} a second company name, {person2} a second person name. Every placeholder used below must be in this list (a unit test checks it).",
+  "fillers": {
+    "outlets": [
+      "Meridian Business Daily", "Harbor Ledger", "The Continental Review", "Northgate Times",
+      "Capital Wire", "The Weekly Sentinel", "Atlas Financial Post", "Riverbend Gazette",
+      "Summit Economic Journal", "The Coastal Herald"
+    ],
+    "authorities": [
+      "the Joint Economic Crimes Taskforce", "the Banking Supervision Authority",
+      "the Financial Intelligence Directorate", "the National Anti-Corruption Bureau",
+      "the Revenue Inspectorate", "the Organised Crime Investigations Unit",
+      "the Securities and Markets Regulator", "the Customs and Border Directorate"
+    ],
+    "courts": [
+      "the Commercial Division of the District Court", "the Regional Criminal Court",
+      "the Court of First Instance", "the Appeals Tribunal", "the Economic Crimes Court"
+    ],
+    "industries": [
+      "import-export", "real estate", "logistics", "hospitality", "construction", "consulting",
+      "used-car dealing", "jewellery wholesale", "telecom reselling", "freight forwarding",
+      "scrap metal trading", "online retail"
+    ]
+  },
+  "themes": [
+    {
+      "id": "investment_fraud_person",
+      "category": "laundering",
+      "applies_to": ["person"],
+      "headlines": [
+        "{name} questioned over collapsed investment scheme",
+        "Investors say {name} promised guaranteed returns",
+        "Police probe {name} after {amount} vanishes from investor pool",
+        "Victims of {city} investment club name {name} in complaints"
+      ],
+      "openings": [
+        "{authority} has opened an inquiry into {name}, a {city} resident accused of running an investment scheme that paid early investors with money from newer ones.",
+        "More than forty investors have filed complaints against {name}, saying they were promised monthly returns of up to 12 percent on funds that were never invested.",
+        "{outlet} has learned that {name} is a person of interest in an investigation into a {city} investment club that stopped paying out in {month} {year}."
+      ],
+      "details": [
+        "Investigators believe roughly {amount} was moved through several personal accounts within days of each deposit.",
+        "Complainants say {name} asked them to wire funds to accounts held in other people's names.",
+        "Bank records reviewed by investigators show repeated transfers just below reporting thresholds.",
+        "A former associate, {person2}, told {outlet} that withdrawals were often converted to cash the same day.",
+        "Several investors said the scheme was recommended to them by friends and had no written contracts."
+      ],
+      "closings": [
+        "{name} has not responded to requests for comment.",
+        "A lawyer for {name} said the money was a legitimate loan arrangement and that the claims are without merit.",
+        "No charges have been filed so far, and the inquiry is continuing."
+      ]
+    },
+    {
+      "id": "bribery_person",
+      "category": "laundering",
+      "applies_to": ["person"],
+      "headlines": [
+        "Official's brother {name} linked to bribery inquiry",
+        "{name} named in kickback investigation",
+        "Prosecutors examine payments from {name} to municipal officials",
+        "{name} denies role in {city} permits scandal"
+      ],
+      "openings": [
+        "{authority} is investigating whether {name} acted as an intermediary for payments to officials involved in awarding construction permits in {city}.",
+        "{name} has been named in court filings as the person who allegedly handled cash payments connected to a {city} licensing scandal.",
+        "A leaked investigation summary seen by {outlet} describes {name} as a 'facilitator' between local businesses and public officials."
+      ],
+      "details": [
+        "Prosecutors say about {amount} passed through accounts linked to {name} over {year}.",
+        "Witnesses told investigators that envelopes of cash were delivered to an office in {city}.",
+        "The payments were allegedly recorded as consulting fees paid to {counterparty}.",
+        "{person2}, a former city employee, is cooperating with investigators.",
+        "Financial analysts flagged the account activity after a sudden jump in deposits."
+      ],
+      "closings": [
+        "{name} denies any wrongdoing.",
+        "The matter is due before {court} later this year.",
+        "Officials declined to comment on an ongoing case."
+      ]
+    },
+    {
+      "id": "offshore_tax_person",
+      "category": "laundering",
+      "applies_to": ["person"],
+      "headlines": [
+        "{name} appears in leaked offshore account records",
+        "Tax authorities target {name} over undeclared overseas funds",
+        "{name} linked to offshore holding structure",
+        "Leak points to hidden wealth held by {name}"
+      ],
+      "openings": [
+        "A cache of leaked records reviewed by {outlet} lists {name} as the beneficial owner of an offshore account holding about {amount}.",
+        "{authority} has asked banks in {country} for records on {name}, who is suspected of hiding income abroad.",
+        "Documents from a corporate services firm name {name} as the controlling party of a holding company registered outside {country}."
+      ],
+      "details": [
+        "The account received regular transfers from several unrelated companies in {country}.",
+        "Declared income for {name} appears far below the sums that moved through the accounts.",
+        "Investigators say the structure used nominee directors to hide the true owner.",
+        "Funds were later moved to a property purchase in {city}.",
+        "The records show the account was opened in {year} and closed shortly after the inquiry began."
+      ],
+      "closings": [
+        "{name} says all assets were properly declared.",
+        "The revenue authority declined to confirm whether an audit is open.",
+        "{outlet} could not reach {name} for comment."
+      ]
+    },
+    {
+      "id": "drug_links_person",
+      "category": "laundering",
+      "applies_to": ["person"],
+      "headlines": [
+        "Cash-heavy business owner {name} arrested in trafficking raid",
+        "{name} questioned about proceeds of narcotics ring",
+        "Police freeze accounts belonging to {name}",
+        "{name} identified as money handler for smuggling network"
+      ],
+      "openings": [
+        "Police in {city} froze several bank accounts held by {name} as part of a wider investigation into a drug distribution network.",
+        "{name} was questioned on {month} {year} about large cash deposits that officers say match the proceeds of narcotics sales.",
+        "{authority} says {name} acted as a 'money handler' who collected and deposited cash for a smuggling group."
+      ],
+      "details": [
+        "Officers say deposits of up to {amount2} were made in small amounts at many branches on the same day.",
+        "A search of a property uncovered ledgers listing names and payments.",
+        "Investigators traced funds from {name}'s accounts to a company owned by {person2}.",
+        "Bank staff reported the unusual activity several months before the arrests.",
+        "The money was then wired abroad as payments for goods that were never delivered."
+      ],
+      "closings": [
+        "{name} has been released pending further inquiries.",
+        "A hearing is scheduled at {court}.",
+        "Police said more arrests were possible."
+      ]
+    },
+    {
+      "id": "real_estate_cash_person",
+      "category": "laundering",
+      "applies_to": ["person"],
+      "headlines": [
+        "Questions raised over {name}'s luxury property purchases",
+        "{name} bought {city} properties with unexplained funds",
+        "Land registry review flags cash purchases by {name}",
+        "{name} under scrutiny for string of all-cash real estate deals"
+      ],
+      "openings": [
+        "A review of land registry records by {outlet} found that {name} bought at least four properties in {city} without a mortgage.",
+        "{authority} is examining the source of funds behind property purchases worth {amount} made by {name} since {year}.",
+        "Estate agents in {city} say {name} paid large deposits in cash and asked for sales to be recorded under other names."
+      ],
+      "details": [
+        "The purchases do not match any income {name} has declared.",
+        "Several of the properties were quickly resold at a loss.",
+        "Title deeds list {person2} as nominal owner of two of the buildings.",
+        "Notaries filed suspicious activity reports on three of the transactions.",
+        "Payments came from accounts at banks in more than one country."
+      ],
+      "closings": [
+        "{name} says the funds came from a family inheritance.",
+        "No formal accusation has been made.",
+        "The inquiry is expected to take several more months."
+      ]
+    },
+    {
+      "id": "crypto_mixing_person",
+      "category": "laundering",
+      "applies_to": ["person"],
+      "headlines": [
+        "{name} linked to crypto mixing service",
+        "Blockchain analysts trace stolen funds to wallets tied to {name}",
+        "{name} questioned over cryptocurrency cash-outs",
+        "Exchange freezes account of {name} after fraud alert"
+      ],
+      "openings": [
+        "Blockchain analysts say wallets controlled by {name} received funds from a theft that took place in {month} {year}.",
+        "An exchange froze the account of {name} after it received about {amount} that had passed through a mixing service.",
+        "{authority} has questioned {name} about repeated conversions of cryptocurrency into cash through accounts in {country}."
+      ],
+      "details": [
+        "The funds were split into dozens of smaller transfers before reaching bank accounts.",
+        "Analysts say the pattern of transfers is typical of attempts to hide the origin of money.",
+        "{person2} is believed to have helped set up the wallets.",
+        "Cash withdrawals followed within hours of each conversion.",
+        "The exchange reported the activity to financial regulators."
+      ],
+      "closings": [
+        "{name} says the transactions were ordinary trading.",
+        "Regulators declined to discuss individual cases.",
+        "{outlet} was unable to verify the wallet ownership independently."
+      ]
+    },
+    {
+      "id": "sanctions_associate_person",
+      "category": "laundering",
+      "applies_to": ["person"],
+      "headlines": [
+        "{name} identified as associate of sanctioned businessman",
+        "Banks review accounts of {name} over sanctions links",
+        "{name} accused of holding assets for sanctioned relative",
+        "Report ties {name} to evasion of trade restrictions"
+      ],
+      "openings": [
+        "A report seen by {outlet} says {name} may have held assets on behalf of a person subject to international sanctions.",
+        "Several banks have reviewed accounts held by {name} after the person was linked to a company owned by a sanctioned figure.",
+        "{authority} is checking whether {name} helped move funds around restrictions imposed on a relative."
+      ],
+      "details": [
+        "Payments of about {amount} were routed through {counterparty} in {country}.",
+        "The accounts showed regular transfers from companies that have since been dissolved.",
+        "{person2} is named in the report as a co-signatory on one of the accounts.",
+        "Compliance officers described the transfers as having no clear business purpose.",
+        "Shipping records connect the same group of companies to goods bound for restricted markets."
+      ],
+      "closings": [
+        "{name} denies acting for anyone else.",
+        "No sanctions have been placed on {name} personally.",
+        "The banks involved declined to comment on client relationships."
+      ]
+    },
+    {
+      "id": "structuring_person",
+      "category": "laundering",
+      "applies_to": ["person"],
+      "headlines": [
+        "{name} made dozens of deposits just under reporting limits, records show",
+        "Branch staff raised alarm over cash deposits by {name}",
+        "{name} suspected of splitting cash into small deposits",
+        "Smurfing ring investigation names {name}"
+      ],
+      "openings": [
+        "Court documents say {name} made more than sixty cash deposits during {year}, almost all just below the amount that triggers mandatory reporting.",
+        "Bank staff in {city} told investigators that {name} visited several branches on the same day, depositing similar sums each time.",
+        "{authority} believes {name} was part of a group that split large amounts of cash into small deposits to avoid detection."
+      ],
+      "details": [
+        "The deposits together came to about {amount}.",
+        "The money was quickly wired out to accounts held by {person2}.",
+        "Investigators found that members of the group shared the same mobile phone number.",
+        "The cash was described by {name} as takings from a market stall.",
+        "Several of the accounts were opened within weeks of each other."
+      ],
+      "closings": [
+        "{name} has been summoned to appear before {court}.",
+        "A spokesperson for {name} said the deposits were a coincidence.",
+        "The case is one of several linked inquiries."
+      ]
+    },
+    {
+      "id": "shell_network_org",
+      "category": "laundering",
+      "applies_to": ["org"],
+      "headlines": [
+        "{name} part of web of shell companies, investigators say",
+        "Inquiry finds {name} has no staff or premises",
+        "{name} linked to network of paper companies",
+        "Registered address of {name} shared with hundreds of firms"
+      ],
+      "openings": [
+        "{authority} says {name} is one of more than thirty companies connected to a single registered address in {city}.",
+        "An investigation by {outlet} found that {name}, officially a {industry} firm, has no employees, no premises and no visible business activity.",
+        "Corporate records show that {name} changed its directors four times in {year}, each time to a person with no known business history."
+      ],
+      "details": [
+        "The company received about {amount} from {counterparty}, then sent nearly all of it onward within days.",
+        "Its accounts show large turnover but almost no costs or wages.",
+        "Several of the connected companies traded only with each other.",
+        "{person2} is listed as a director of at least nine of the firms.",
+        "Banks have closed accounts held by related companies."
+      ],
+      "closings": [
+        "{name} did not answer questions from {outlet}.",
+        "A lawyer said the company is a legitimate holding vehicle.",
+        "The inquiry continues."
+      ]
+    },
+    {
+      "id": "trade_based_org",
+      "category": "laundering",
+      "applies_to": ["org"],
+      "headlines": [
+        "Customs flag over-invoicing by {name}",
+        "{name} billed far above market price for routine goods",
+        "{name} under review for suspicious trade invoices",
+        "Trade audit questions shipments handled by {name}"
+      ],
+      "openings": [
+        "{authority} has flagged invoices issued by {name} that price ordinary {industry} goods at several times their market value.",
+        "A trade audit of {name} found shipments declared at {amount} that experts valued at a small fraction of that figure.",
+        "Customs officers in {country} are comparing shipping documents from {name} with payments received from {counterparty}."
+      ],
+      "details": [
+        "In several cases the goods listed on the invoices could not be found in the shipment.",
+        "Payments were made by third parties unconnected to the buyer.",
+        "The same cargo appears to have been invoiced more than once.",
+        "Investigators say the pattern can be used to move money across borders under cover of trade.",
+        "{person2} signed several of the documents as authorised representative."
+      ],
+      "closings": [
+        "{name} says pricing reflects special market conditions.",
+        "No penalty has been announced.",
+        "Officials said the audit will be widened to other exporters."
+      ]
+    },
+    {
+      "id": "sanctions_evasion_org",
+      "category": "laundering",
+      "applies_to": ["org"],
+      "headlines": [
+        "{name} suspected of acting as front for sanctioned entity",
+        "Shipping records tie {name} to restricted goods",
+        "Banks cut ties with {name} over sanctions concerns",
+        "{name} named in sanctions evasion probe"
+      ],
+      "openings": [
+        "{authority} is investigating whether {name} helped a sanctioned company obtain restricted goods through intermediaries.",
+        "Several banks have ended their relationship with {name} after screening flagged links to a sanctioned owner.",
+        "A report by {outlet} says {name} resold equipment to buyers in third countries on behalf of a company under international sanctions."
+      ],
+      "details": [
+        "Payments totalling about {amount} came from companies registered in {country}.",
+        "The goods were often relabelled and shipped through intermediate ports.",
+        "Ownership records show {person2} as a shareholder through a nominee company.",
+        "The company's stated activity, {industry}, does not match the goods it handled.",
+        "Compliance staff at one bank described the paperwork as inconsistent."
+      ],
+      "closings": [
+        "{name} says it complies with all applicable laws.",
+        "The regulator would not comment on individual firms.",
+        "A decision on penalties has not been announced."
+      ]
+    },
+    {
+      "id": "front_business_org",
+      "category": "laundering",
+      "applies_to": ["org"],
+      "headlines": [
+        "Cash-heavy {industry} firm {name} suspected of laundering",
+        "{name} reported revenue that does not match its size",
+        "Police raid offices of {name}",
+        "{name} suspected of mixing illicit cash with sales"
+      ],
+      "openings": [
+        "Police raided the offices of {name}, a {industry} business in {city}, as part of an investigation into the movement of illegal cash.",
+        "Accountants who reviewed {name} told {authority} that reported takings were far higher than the business could plausibly generate.",
+        "{name} deposited about {amount} in cash during {year}, much more than similar businesses in {city}."
+      ],
+      "details": [
+        "Customers interviewed by investigators could not recall buying anything from the firm.",
+        "The company's busiest days did not match its opening hours.",
+        "Money was frequently sent on to {counterparty} as 'consulting fees'.",
+        "{person2} is described as the real controller of the business.",
+        "Staff were reportedly paid in cash and had no contracts."
+      ],
+      "closings": [
+        "{name} said it is cooperating fully.",
+        "No arrests have been announced.",
+        "Documents seized in the raid are still being examined."
+      ]
+    },
+    {
+      "id": "procurement_bribery_org",
+      "category": "laundering",
+      "applies_to": ["org"],
+      "headlines": [
+        "{name} accused of paying kickbacks for public contract",
+        "Contract awarded to {name} under review",
+        "{name} won tender after payments to officials, inquiry hears",
+        "Auditors question {amount} contract won by {name}"
+      ],
+      "openings": [
+        "Auditors have asked why {name} won a public contract worth {amount} despite offering a higher price than three rivals.",
+        "{authority} is investigating payments made by {name} to a consultancy owned by relatives of a procurement official.",
+        "Whistleblowers have told {outlet} that {name} paid for access to tender information before bids were submitted."
+      ],
+      "details": [
+        "The consultancy had no website, no staff and no previous clients.",
+        "Invoices from {counterparty} were paid shortly before the contract decision.",
+        "{person2}, the official in charge of the tender, has been suspended.",
+        "Records show a series of transfers to accounts in {country} within weeks of the award.",
+        "Work on the contract was repeatedly delayed and its cost grew by about {amount2}."
+      ],
+      "closings": [
+        "{name} denies any improper payment.",
+        "The contract has been suspended pending the outcome of the inquiry.",
+        "A hearing is expected at {court}."
+      ]
+    },
+    {
+      "id": "unlicensed_remitter_org",
+      "category": "laundering",
+      "applies_to": ["org"],
+      "headlines": [
+        "{name} accused of running unlicensed money transfer service",
+        "Regulator warns public about {name}",
+        "{name} moved cash across borders without a licence",
+        "Money-transfer outlet {name} shut down after inspection"
+      ],
+      "openings": [
+        "{authority} has shut down {name} after inspectors found it was transferring money abroad without the required licence.",
+        "A warning issued by regulators says {name} offered informal money transfers to {country} and kept no customer records.",
+        "{name}, which describes itself as a {industry} firm, handled about {amount} in transfers during {year}, according to investigators."
+      ],
+      "details": [
+        "Transfers were settled by offsetting payments between accounts rather than by moving money directly.",
+        "No identification was requested from customers sending large sums.",
+        "Several customers have been linked to other criminal inquiries.",
+        "Inspectors found bundles of cash and handwritten ledgers on the premises.",
+        "{person2} is described as the manager of the operation."
+      ],
+      "closings": [
+        "{name} could not be reached for comment.",
+        "Further penalties are being considered.",
+        "Customers have been advised to contact the regulator."
+      ]
+    },
+    {
+      "id": "layering_org",
+      "category": "laundering",
+      "applies_to": ["org"],
+      "headlines": [
+        "Funds passed through {name} within hours, analysis shows",
+        "{name} used as pass-through for large transfers",
+        "{name} accounts show rapid in-and-out movement of money",
+        "Analysts flag circular payments involving {name}"
+      ],
+      "openings": [
+        "An analysis of bank data by {authority} shows that {name} received and re-sent about {amount} within hours, repeatedly, during {year}.",
+        "Transfers between {name} and {counterparty} appear to form a circle, with the same sums returning to their origin after several steps.",
+        "Compliance staff at a bank in {city} described the account of {name} as a pass-through with no real trading."
+      ],
+      "details": [
+        "The amounts moved were rarely the same as invoiced goods or services.",
+        "Each transfer was accompanied by vague references such as 'loan repayment'.",
+        "Several intermediary accounts were opened and closed within a few weeks.",
+        "{person2} had signing authority on most of the accounts.",
+        "Investigators say the pattern is consistent with attempts to hide the origin of funds."
+      ],
+      "closings": [
+        "{name} says the transfers were part of group treasury operations.",
+        "No findings have been made public.",
+        "The bank has filed a report with regulators."
+      ]
+    },
+    {
+      "id": "leaked_documents_any",
+      "category": "laundering",
+      "applies_to": ["person", "org"],
+      "headlines": [
+        "Leaked files raise questions about {name}",
+        "{name} appears in leaked compliance documents",
+        "Whistleblower names {name} in report to regulators",
+        "Internal bank memo flags {name} as high risk"
+      ],
+      "openings": [
+        "Internal documents leaked to {outlet} show that compliance staff repeatedly raised concerns about {name} between {year} and the present.",
+        "A whistleblower has told {authority} that senior staff at a bank ignored warnings about the accounts of {name}.",
+        "A bank memo seen by {outlet} classifies {name} as 'high risk' after unexplained transfers totalling {amount}."
+      ],
+      "details": [
+        "The memo says the origin of funds could not be established.",
+        "Staff recommended closing the accounts but were overruled.",
+        "Transfers involved {counterparty} and several newly opened accounts in {country}.",
+        "The documents mention {person2} as an intermediary.",
+        "Questions about the client's real business were never answered."
+      ],
+      "closings": [
+        "The bank said it follows all regulatory requirements.",
+        "{name} did not respond.",
+        "Regulators are reviewing the documents."
+      ]
+    },
+    {
+      "id": "tax_dispute_settled",
+      "category": "decoy",
+      "applies_to": ["person", "org"],
+      "headlines": [
+        "{name} settles tax dispute",
+        "Revenue authority drops case against {name}",
+        "{name} agrees to pay back taxes",
+        "{name} wins appeal over tax assessment"
+      ],
+      "openings": [
+        "{name} has settled a long-running dispute with {authority} over how certain income was reported.",
+        "A tax assessment against {name} was reduced on appeal, {court} confirmed.",
+        "{outlet} reports that {name} agreed to pay an additional {amount2} to resolve questions about earlier filings."
+      ],
+      "details": [
+        "The disagreement concerned the timing of deductions, not hidden income.",
+        "Officials said there was no suggestion of criminal conduct.",
+        "The settlement covers filings from {year} and earlier.",
+        "{name} said the dispute arose from a change in accounting rules."
+      ],
+      "closings": [
+        "Both sides said they were satisfied with the outcome.",
+        "No further action is expected.",
+        "{name} said it would continue to operate normally."
+      ]
+    },
+    {
+      "id": "labor_dispute",
+      "category": "decoy",
+      "applies_to": ["org"],
+      "headlines": [
+        "Workers at {name} stage walkout over pay",
+        "{name} faces employment tribunal",
+        "Staff accuse {name} of unpaid overtime",
+        "{name} reaches deal with employees after strike"
+      ],
+      "openings": [
+        "Employees of {name}, a {industry} company in {city}, walked out in {month} {year} in a dispute over pay and working hours.",
+        "{name} is facing a claim at an employment tribunal brought by former staff who say they were not paid for overtime.",
+        "{outlet} reports that union representatives and {name} have agreed on a new pay structure after three weeks of industrial action."
+      ],
+      "details": [
+        "The claim covers about {amount2} in unpaid wages.",
+        "Management said it had followed the terms of the existing contracts.",
+        "Customers in {city} experienced delays during the action.",
+        "The union said safety concerns were also raised."
+      ],
+      "closings": [
+        "Operations have returned to normal.",
+        "A hearing date has not yet been set.",
+        "{name} said it values its employees."
+      ]
+    },
+    {
+      "id": "product_recall",
+      "category": "decoy",
+      "applies_to": ["org"],
+      "headlines": [
+        "{name} recalls products over safety concern",
+        "{name} fined after faulty batch reaches shops",
+        "Consumers warned about goods sold by {name}",
+        "{name} suspends sales pending safety review"
+      ],
+      "openings": [
+        "{name} has recalled a batch of products after tests found they did not meet safety standards.",
+        "A consumer protection agency fined {name} {amount2} after faulty items from its {industry} line reached customers.",
+        "{name} paused sales in {country} while it reviews a manufacturing problem reported in {month} {year}."
+      ],
+      "details": [
+        "No injuries have been reported.",
+        "Customers can return affected items for a full refund.",
+        "The company said the fault came from a supplier.",
+        "Inspectors visited the {city} warehouse and took samples."
+      ],
+      "closings": [
+        "{name} apologised to customers.",
+        "The review is expected to finish within weeks.",
+        "The company said it has strengthened its quality checks."
+      ]
+    },
+    {
+      "id": "allegations_cleared",
+      "category": "decoy",
+      "applies_to": ["person", "org"],
+      "headlines": [
+        "{name} cleared of wrongdoing after inquiry",
+        "Investigation into {name} closed without charges",
+        "Allegations against {name} found to be unfounded",
+        "{name} exonerated, authorities confirm"
+      ],
+      "openings": [
+        "{authority} has closed its investigation into {name}, saying it found no evidence of criminal conduct.",
+        "Allegations published against {name} in {year} were found to be baseless after a review, {outlet} reports.",
+        "{court} dismissed a complaint against {name}, ruling that the claims lacked supporting evidence."
+      ],
+      "details": [
+        "The inquiry had been prompted by an anonymous tip.",
+        "Investigators reviewed accounts and records over eight months.",
+        "A statement said the transactions in question had a legitimate explanation.",
+        "{name} said the process had damaged its reputation."
+      ],
+      "closings": [
+        "{name} said it welcomed the outcome.",
+        "No further action will be taken.",
+        "{name} is considering a claim against the original source of the complaint."
+      ]
+    },
+    {
+      "id": "data_breach_fine",
+      "category": "decoy",
+      "applies_to": ["org"],
+      "headlines": [
+        "{name} fined over customer data leak",
+        "Data breach at {name} affects thousands",
+        "Privacy regulator criticises {name}",
+        "{name} apologises after security incident"
+      ],
+      "openings": [
+        "{name} has been fined {amount2} by a privacy regulator after a data breach exposed customer details in {year}.",
+        "A security incident at {name} in {month} {year} exposed contact details of customers in {city} and beyond.",
+        "{outlet} reports that {name} failed to notify customers promptly after personal data was accessed."
+      ],
+      "details": [
+        "No financial data is believed to have been taken.",
+        "The company has hired outside security specialists.",
+        "The regulator found that basic protections were missing.",
+        "Customers have been advised to change passwords."
+      ],
+      "closings": [
+        "{name} said it takes the matter seriously.",
+        "The fine is being appealed.",
+        "An audit of systems is under way."
+      ]
+    },
+    {
+      "id": "bankruptcy_creditors",
+      "category": "decoy",
+      "applies_to": ["person", "org"],
+      "headlines": [
+        "{name} enters insolvency proceedings",
+        "Creditors meet over debts owed by {name}",
+        "{name} files for protection from creditors",
+        "{name} restructures debt after difficult year"
+      ],
+      "openings": [
+        "{name} has applied to {court} for protection from creditors after a decline in earnings.",
+        "Creditors of {name} met in {city} to discuss how debts of about {amount} will be handled.",
+        "{outlet} reports that {name} is restructuring its finances after falling behind on loan payments in {year}."
+      ],
+      "details": [
+        "Administrators have been appointed to review the books.",
+        "Most of the debt is owed to banks and suppliers.",
+        "There is no suggestion of any criminal conduct.",
+        "The downturn in {industry} was cited as the main cause."
+      ],
+      "closings": [
+        "{name} hopes to reach an agreement within months.",
+        "A creditors' vote is scheduled.",
+        "Employees have been told their jobs are safe for now."
+      ]
+    },
+    {
+      "id": "defamation_suit",
+      "category": "decoy",
+      "applies_to": ["person"],
+      "headlines": [
+        "{name} sues newspaper over article",
+        "{name} wins libel claim",
+        "Court hears defamation case brought by {name}",
+        "{name} and {outlet} settle libel dispute"
+      ],
+      "openings": [
+        "{name} has taken legal action against a publication over an article that linked {name} to a business dispute.",
+        "{court} ruled in favour of {name} in a libel case about statements published in {year}.",
+        "{name} and {outlet} have settled a defamation dispute out of court."
+      ],
+      "details": [
+        "The article was later removed from the publication's website.",
+        "Damages of about {amount2} were agreed.",
+        "A retraction was printed on page two.",
+        "The dispute began after a disagreement over a property sale in {city}."
+      ],
+      "closings": [
+        "{name} said the matter is now closed.",
+        "The publication said it stands by its reporters.",
+        "Both sides will cover their own costs."
+      ]
+    }
+  ]
+}
