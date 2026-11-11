@@ -7,7 +7,7 @@ Project overview and architecture:
 
 ## Status
 
-Greenfield. No application code exists yet — only the design doc, `requirements.txt`, and a local venv (`my_venv/`, gitignore it). The folder is not yet a git repo.
+In progress. F00–F03 have been started or built (app code, Alembic migrations, ingestion, synthetic data in `app/synth/`). The repo is under git (feature branches, PRs into `main`). Use the single local venv `.venv/` (Python 3.12, gitignored); don't create other venvs.
 
 Full design (data sources, architecture, LangGraph graph, feature breakdown F00–F18, eval plan, build order):
 
@@ -16,7 +16,8 @@ Full design (data sources, architecture, LangGraph graph, feature breakdown F00�
 ## Things that will trip you up
 
 - **`requirements.txt` currently holds only dev/test tooling** (pytest, testcontainers, ruff, mypy, pre-commit, locust). The runtime libraries (FastAPI, SQLAlchemy, LangGraph, etc.) described in the design doc are not listed yet. The plan is `requirements.txt` = runtime and `requirements-dev.txt` = `-r requirements.txt` plus dev tools, with a compiled `requirements.lock` used by Docker and CI.
-- **Python version mismatch:** `my_venv` is Python 3.14.7, but the design targets Python 3.12 (uv for dependencies). Confirm before installing; LangChain/LangGraph/Presidio may not support 3.14.
+- **Python version:** `.venv` is Python 3.12, matching the design (uv for dependencies). Don't switch to 3.14; LangChain/LangGraph/Presidio may not support it.
+- **Env files:** `.env` holds real secrets (gitignored); `.env.example` is committed with placeholders. Update `.env.example` whenever a new variable is added.
 - Presidio needs `python -m spacy download en_core_web_lg` after install.
 
 ## Architecture in one paragraph

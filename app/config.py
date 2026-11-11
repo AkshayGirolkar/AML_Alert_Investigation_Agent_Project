@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +13,10 @@ class Settings(BaseSettings):
     postgres_db: str = "aml"
     postgres_host: str = "localhost"
     postgres_port: int = 5433
+
+    seed: int = 42
+    openai_api_key: str = ""
+    data_dir: Path = Path("data")
 
     @property
     def sync_database_url(self) -> str:
