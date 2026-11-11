@@ -6,7 +6,6 @@ every run truncates the six target tables first, so it is repeatable.
 """
 
 import csv
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -14,9 +13,9 @@ from typing import cast
 import psycopg
 from sqlalchemy import Table
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.engine import make_url
 from sqlalchemy.schema import CreateIndex
 
+from app.db.copy import conninfo, copy_file, log
 from app.db.models import Transaction
 from app.ingest.parsing import PATTERN_LINE_FIELDS, parse_patterns_file
 
@@ -51,21 +50,6 @@ class LoadOptions:
     slice_mode: bool
     seed: int = 42
     slice_size: int = 100_000
-
-
-def _conninfo(sqlalchemy_url: str) -> str:
-    url = make_url(sqlalchemy_url).set(drivername="postgresql")
-    return url.render_as_string(hide_password=False)
-
-
-def _log(msg: str) -> None:
-    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
-
-
-def _copy_file(cur: psycopg.Cursor, sql: str, path: Path) -> None:
-    with path.open("rb") as fh, cur.copy(sql) as copy:
-        while chunk := fh.read(1 << 20):
-            copy.write(chunk)
 
 
 def _scalar(cur: psycopg.Cursor, sql: str, params: tuple = ()) -> int:
@@ -264,7 +248,7 @@ def _load_core(cur: psycopg.Cursor, opts: LoadOptions) -> None:
         SELECT bank_id, account_number, entity_id FROM acct_keep
         ORDER BY bank_id, account_number"""
     )
-    _log("banks/entities/accounts loaded; loading transactions")
+    log("banks/entities/accounts loaded; loading transactions")
     cur.execute("SET LOCAL timezone = 'UTC'")  # to_timestamp -> timestamp is exact
     cur.execute(
         """INSERT INTO transactions
@@ -309,33 +293,33 @@ def load(opts: LoadOptions) -> dict[str, int]:
         for idx in txn_table.indexes
     ]
 
-    with psycopg.connect(_conninfo(opts.database_url)) as conn, conn.cursor() as cur:
-        _log("truncating target tables, dropping secondary txn indexes")
+    with psycopg.connect(conninfo(opts.database_url)) as conn, conn.cursor() as cur:
+        log("truncating target tables, dropping secondary txn indexes")
         cur.execute(f"TRUNCATE {', '.join(TARGET_TABLES)} RESTART IDENTITY CASCADE")
         for name in index_names:
             cur.execute(f'DROP INDEX IF EXISTS "{name}"')
 
         _create_staging(cur)
-        _log("COPY accounts file")
-        _copy_file(
+        log("COPY accounts file")
+        copy_file(
             cur,
             "COPY stg_accounts (bank_name, bank_id, account_number, entity_id, "
             "entity_name) FROM STDIN (FORMAT csv, HEADER true)",
             accounts_path,
         )
-        _log("COPY transactions file")
-        _copy_file(
+        log("COPY transactions file")
+        copy_file(
             cur,
             f"COPY stg_trans ({_TXN_COLS}) FROM STDIN (FORMAT csv, HEADER true)",
             trans_path,
         )
         _check_first_row(cur, trans_path)
-        _log("matching laundering attempts")
+        log("matching laundering attempts")
         links = _load_attempts_and_match(cur, patterns_path)
         _choose_kept(cur, opts)
         _load_core(cur, opts)
 
-        _log("recreating indexes")
+        log("recreating indexes")
         for ddl in index_ddl:
             cur.execute(ddl)
         cur.execute("DROP TABLE stg_trans, stg_accounts, stg_pattern_lines")

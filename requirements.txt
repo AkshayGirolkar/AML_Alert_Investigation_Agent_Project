@@ -6,3 +6,5 @@ psycopg[binary]>=3.1   # sync driver, used by Alembic and the COPY loader
 pydantic>=2.7
 pydantic-settings>=2.3
 pgvector>=0.3
+faker>=33
+openai>=1.50

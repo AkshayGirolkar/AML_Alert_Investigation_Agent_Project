@@ -3,12 +3,15 @@
 Design notes are in docs/features/F02-ingestion.md.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -19,6 +22,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -116,3 +120,87 @@ class LaunderingAttemptTransaction(Base):
     txn_id: Mapped[int] = mapped_column(
         ForeignKey("transactions.txn_id"), primary_key=True
     )
+
+
+# ---- F03: synthetic KYC, sanctions and adverse media ----
+
+
+class KycProfile(Base):
+    __tablename__ = "kyc_profiles"
+    __table_args__ = (
+        CheckConstraint(
+            "risk_rating IN ('low','medium','high')", name="ck_kyc_risk_rating"
+        ),
+    )
+
+    entity_id: Mapped[str] = mapped_column(
+        String(16), ForeignKey("entities.entity_id"), primary_key=True
+    )
+    full_name: Mapped[str] = mapped_column(Text)
+    occupation: Mapped[str] = mapped_column(Text)
+    country: Mapped[str] = mapped_column(String(2))
+    expected_monthly_volume: Mapped[Decimal] = mapped_column(Numeric(20, 2))
+    risk_rating: Mapped[str] = mapped_column(String(8))
+
+
+class SanctionsEntity(Base):
+    """OpenSanctions rows that could plausibly be customers."""
+
+    __tablename__ = "sanctions_entities"
+    __table_args__ = (
+        Index(
+            "ix_sanctions_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+        ),
+    )
+
+    source_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    aliases: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    schema_type: Mapped[str] = mapped_column(Text)
+    countries: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    dataset: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    first_seen: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class PlantedMatch(Base):
+    """Answer key for F15: which customers were deliberately given a sanctioned name."""
+
+    __tablename__ = "planted_matches"
+    __table_args__ = (
+        CheckConstraint(
+            "variant_kind IN ('exact','reordered','typo')", name="ck_planted_variant"
+        ),
+    )
+
+    entity_id: Mapped[str] = mapped_column(
+        String(16), ForeignKey("entities.entity_id"), primary_key=True
+    )
+    sanctions_source_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("sanctions_entities.source_id")
+    )
+    variant_kind: Mapped[str] = mapped_column(String(16))
+
+
+class AdverseMedia(Base):
+    __tablename__ = "adverse_media"
+    __table_args__ = (
+        Index("ix_adverse_media_entity_id", "entity_id"),
+        Index(
+            "ix_adverse_media_embedding",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )
+
+    media_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    entity_id: Mapped[str] = mapped_column(String(16), ForeignKey("entities.entity_id"))
+    headline: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text)
+    published_at: Mapped[date] = mapped_column(Date)
+    is_decoy: Mapped[bool] = mapped_column(Boolean)
+    theme: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list[float]] = mapped_column(Vector(1536))
