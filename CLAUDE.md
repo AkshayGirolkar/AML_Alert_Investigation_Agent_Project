@@ -15,7 +15,7 @@ Full design (data sources, architecture, LangGraph graph, feature breakdown F00â
 
 ## Things that will trip you up
 
-- **`requirements.txt` currently holds only dev/test tooling** (pytest, testcontainers, ruff, mypy, pre-commit, locust). The runtime libraries (FastAPI, SQLAlchemy, LangGraph, etc.) described in the design doc are not listed yet. The plan is `requirements.txt` = runtime and `requirements-dev.txt` = `-r requirements.txt` plus dev tools, with a compiled `requirements.lock` used by Docker and CI.
+- **Requirements are partial and unlocked.** `requirements.txt` = runtime libs added feature by feature (so far SQLAlchemy/asyncpg/psycopg/Alembic/pydantic/pgvector/Faker/openai); `requirements-dev.txt` = `-r requirements.txt` plus pytest, ruff, mypy, pre-commit, testcontainers, locust. FastAPI, LangGraph/LangChain, Redis, boto3, Presidio etc. are not listed yet; add each with the feature that needs it. There is no `requirements.lock` yet; the plan is a compiled lock used by Docker and CI.
 - **Python version:** `.venv` is Python 3.12, matching the design (uv for dependencies). Don't switch to 3.14; LangChain/LangGraph/Presidio may not support it.
 - **Env files:** `.env` holds real secrets (gitignored); `.env.example` is committed with placeholders. Update `.env.example` whenever a new variable is added.
 - Presidio needs `python -m spacy download en_core_web_lg` after install.
@@ -34,14 +34,18 @@ IBM synthetic AML transactions (HI-Small, ~5M rows, with `Is Laundering` ground 
 - Develop against a ~100k-transaction slice; use the full dataset only for evals and load tests.
 - Work one feature at a time from `docs/features/<feature>.md` and don't change code outside that feature's scope.
 
-## Commands (planned, not yet runnable)
+## Commands
 
 ```bash
-uv venv && source .venv/bin/activate
+source .venv/bin/activate            # .venv already exists (Python 3.12)
 uv pip install -r requirements-dev.txt
-docker compose up            # postgres (pgvector image), redis, localstack, api, worker
-pytest tests/path/test_x.py::test_name   # single test
+docker compose up -d postgres        # only service defined so far (pgvector pg17, host port 5433)
+alembic upgrade head                 # schema migrations
+python -m scripts.load_hi_small      # F02 ingestion; scripts/ also has generate_kyc, generate_media, load_sanctions, plant_sanctions_matches (run with -m)
+pytest tests/path/test_x.py::test_name   # single test; `live` marker (real OpenAI) is skipped by default, use -m live
 ruff check . && mypy .
 ```
+
+Not built yet: FastAPI app and `/health` (no `app/main.py`), redis/localstack/api/worker in `docker-compose.yml`, Dockerfile, GitHub Actions CI, `pyproject.toml`.
 
 Required env in `.env` (never commit): `OPENAI_API_KEY`, `LANGSMITH_API_KEY`, `LANGSMITH_TRACING=true`, optional `ANTHROPIC_API_KEY`. Kaggle download needs `~/.kaggle/kaggle.json`.

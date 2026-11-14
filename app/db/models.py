@@ -204,3 +204,36 @@ class AdverseMedia(Base):
     is_decoy: Mapped[bool] = mapped_column(Boolean)
     theme: Mapped[str] = mapped_column(Text)
     embedding: Mapped[list[float]] = mapped_column(Vector(1536))
+
+
+# ---------------------------------------------------------------- F04: rules engine
+
+
+class Alert(Base):
+    """One alert = one account flagged by one rule in one tumbling time window."""
+
+    __tablename__ = "alerts"
+    __table_args__ = (
+        UniqueConstraint(
+            "rule_id",
+            "account_id",
+            "window_start",
+            name="uq_alerts_rule_account_window",
+        ),
+        Index("ix_alerts_rule_id", "rule_id"),
+        Index("ix_alerts_account_id", "account_id"),
+    )
+
+    alert_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    rule_id: Mapped[str] = mapped_column(Text)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.account_id"))
+    window_start: Mapped[datetime] = mapped_column(DateTime)
+    window_end: Mapped[datetime] = mapped_column(DateTime)
+    trigger_txn_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger))
+    score: Mapped[Decimal] = mapped_column(Numeric(6, 4))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("now()"))
+    # Ground-truth label, derived from transactions.is_laundering / laundering_attempts.
+    is_true_positive: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false")
+    )
+    typology: Mapped[str | None] = mapped_column(Text, nullable=True)

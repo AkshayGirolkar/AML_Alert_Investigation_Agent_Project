@@ -18,6 +18,22 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     data_dir: Path = Path("data")
 
+    # F04 rules engine thresholds (see app/rules/config.py for meaning and validation)
+    rule_velocity_window_hours: int = 1
+    rule_velocity_min_txns: int = 10
+    rule_fan_window_hours: int = 24
+    rule_fan_min_degree: int = 8
+    rule_round_trip_window_hours: int = 24
+    rule_round_trip_max_hops: int = 3
+    rule_structuring_limit: float = 10_000
+    rule_structuring_margin: float = 0.10
+    rule_structuring_min_txns: int = 3
+    rule_structuring_window_hours: int = 24
+    rule_high_risk_countries: str = "IR,KP,SY,MM,CU"  # comma-separated, ISO-2
+    rule_high_risk_ratings: str = "high"  # comma-separated
+    rule_high_risk_window_hours: int = 24
+    rule_sanctions_similarity: float = 0.5
+
     @property
     def sync_database_url(self) -> str:
         """psycopg URL used by Alembic and the bulk loader."""
