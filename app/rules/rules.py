@@ -163,14 +163,25 @@ def high_risk_counterparty(cur: psycopg.Cursor, cfg: RuleConfig) -> int:
         "CREATE TEMP TABLE _risky_accounts (account_id integer PRIMARY KEY) "
         "ON COMMIT DROP"
     )
+    # The trigram probe is the expensive step (~2 ms each), so run it once per distinct
+    # name that is not already risky by attribute, not once per account row.
     cur.execute(
         """
+        WITH attr_risky AS (
+          SELECT entity_id FROM kyc_profiles
+          WHERE country = ANY(%(countries)s) OR risk_rating = ANY(%(ratings)s)
+        ),
+        sanctioned_names AS MATERIALIZED (
+          SELECT n.full_name
+          FROM (SELECT DISTINCT k.full_name FROM kyc_profiles k
+                WHERE k.entity_id NOT IN (SELECT entity_id FROM attr_risky)) n
+          WHERE EXISTS (SELECT 1 FROM sanctions_entities s WHERE s.name %% n.full_name)
+        )
         INSERT INTO _risky_accounts
         SELECT a.account_id
         FROM accounts a JOIN kyc_profiles k USING (entity_id)
-        WHERE k.country = ANY(%(countries)s)
-           OR k.risk_rating = ANY(%(ratings)s)
-           OR EXISTS (SELECT 1 FROM sanctions_entities s WHERE s.name %% k.full_name)""",
+        WHERE k.entity_id IN (SELECT entity_id FROM attr_risky)
+           OR k.full_name IN (SELECT full_name FROM sanctioned_names)""",
         {
             "countries": list(cfg.high_risk_countries),
             "ratings": list(cfg.high_risk_ratings),

@@ -8,3 +8,4 @@ pydantic-settings>=2.3
 pgvector>=0.3
 faker>=33
 openai>=1.50
+langchain-core>=1.0     # F05 agent tools (StructuredTool); LangGraph/LangChain added in F06

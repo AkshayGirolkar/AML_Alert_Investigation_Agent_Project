@@ -1,0 +1,144 @@
+F05 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+Banks get thousands of automated "suspicious activity" alerts every day, and
+most are false alarms. An analyst has to investigate each one. They look at the
+account's transactions, who it deals with, whether the name is on a sanctions
+list, whether there is bad news about the customer, and whether the behavior is
+unusual. Then they decide: close it, or escalate it.
+
+This project builds an AI agent that does that investigation, then compares its
+decisions to the known correct answers to measure how good it is.
+
+
+2. THE PROBLEM F05 SOLVES
+-------------------------
+The agent is a language model. On its own it can only produce text. It cannot
+see your database. If you just ask it "is account 123 suspicious?", it will
+guess. That causes three problems:
+
+  - It can't look anything up. It needs a way to ask the database questions.
+  - It might invent facts. An investigation must be backed by real evidence.
+  - It is bad at arithmetic. Totals and percentages must be computed by code,
+    not by the model.
+
+
+3. HOW F05 SOLVES IT
+--------------------
+I built five LOOKUP TOOLS the agent can call, like a detective's toolkit. Each
+tool queries the database and returns a RECEIPT (called "evidence") with a
+unique ID. Later the agent must cite receipt IDs, and the system can check that
+each one is real.
+
+The five tools:
+
+  query_transactions    What money moved in and out of this account? How much,
+                        in which currencies?
+  counterparty_network  Who does this account deal with, and their contacts too
+                        (2 steps out)? Does money loop back to the start?
+  sanctions_screen      Does the customer's name look like someone on a
+                        sanctions list? (handles typos and reordered names)
+  adverse_media         Are there bad-news articles about the customer?
+  peer_comparison       Is the customer much busier than similar customers? Are
+                        they moving far more money than they declared?
+
+
+FILES ADDED UNDER app/agent/
+----------------------------
+Think of it as a kitchen: the five tool files are the cooks, and the other
+files are the shared equipment.
+
+evidence.py
+    Defines the receipt every tool returns (status, one-sentence summary, data,
+    ID). The ID is made from the tool name plus the question asked, so the same
+    question always gets the same ID. A failed lookup gets no ID, so it cannot
+    be cited as proof.
+    (Analogy: the receipt printer.)
+
+tools/schemas.py
+    Defines the allowed inputs for each tool (for example, "hops" can only be 1
+    or 2, and a start date must be before the end date). It also produces the
+    instructions the AI reads about how to call each tool.
+    (Analogy: the order form.)
+
+tools/common.py
+    Small shared helpers: turn bad input into an error receipt instead of
+    crashing, format money and dates, and find which customer owns an account.
+    (Analogy: the shared utensils.)
+
+tools/transactions.py   (Tool 1)
+    Summarizes an account's money in and out: counts, totals per currency, and
+    the latest transactions.
+    (Analogy: reads the bank statement.)
+
+tools/network.py        (Tool 2)
+    Maps who the account deals with, up to two steps out, and spots money that
+    loops back to where it started.
+    (Analogy: draws the web of contacts.)
+
+tools/sanctions.py      (Tool 3)
+    Checks the customer's name against sanctions lists, even with typos or
+    reordered words.
+    (Analogy: checks the watchlist.)
+
+tools/media.py          (Tool 4)
+    Finds bad-news articles about the customer. It can rank them by topic.
+    (Analogy: searches the news.)
+
+tools/peers.py          (Tool 5)
+    Compares the customer to similar customers and to the volume they declared.
+    (Analogy: asks "is this normal?")
+
+tools/registry.py
+    Packages the five tools in the format the agent framework (LangChain)
+    understands. It also opens read-only database connections, so a tool can
+    never change data.
+    (Analogy: the toolbox.)
+
+__init__.py (two of them)
+    Empty marker files. They tell Python these folders are packages it can
+    import from.
+    (Analogy: folder labels.)
+
+
+OTHER FILES ADDED OR CHANGED FOR F05
+------------------------------------
+docs/features/F05-agent-tools.md      The spec: scope, design decisions, measured
+                                      speeds, and when F05 counts as done.
+tests/unit/test_agent_tools.py        25 fast tests, no database needed. Check
+                                      ID stability, input validation, and that
+                                      errors come back as data.
+tests/integration/test_agent_tools.py Tests against a real Postgres with tiny
+                                      hand-built data (for example, "a
+                                      3-account loop is detected" and "a typo'd
+                                      name still matches the sanctions list").
+requirements.txt                      Added langchain-core, which the tool
+                                      wrappers need.
+
+
+SAFETY RULES BUILT IN
+---------------------
+  - The AI never does maths. All totals and percentages come from SQL or Python.
+  - The answer key stays hidden. The data knows which transactions are truly
+    laundering. No tool reveals it, otherwise the agent would be cheating and
+    your evaluation would be meaningless. A test enforces this.
+  - Output is limited. Each tool caps how much it returns, so results fit in the
+    AI's working memory.
+  - Receipts can be checked. Because every receipt has a stable ID, F06 can
+    reject any verdict that cites an ID that does not exist.
+
+
+WHERE THIS FITS
+---------------
+  F04 rules create alerts  ->  F05 tools (done)  ->  F06 agent uses the tools
+
+F05 builds the toolbox. F06 will build the agent that uses it.
+
+
+ONE KNOWN LIMITATION
+--------------------
+sanctions_screen takes 2-5 seconds on the full dataset, because searching alias
+names is not indexed. Fixing it needs a database migration, which is outside
+F05's scope. It is noted for F10, when Redis caching arrives.
