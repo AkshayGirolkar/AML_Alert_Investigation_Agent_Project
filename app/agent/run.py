@@ -1,6 +1,7 @@
 """CLI: investigate one alert.  python -m app.agent.run --alert-id 123"""
 
 import argparse
+import asyncio
 import json
 
 from app.agent.graph import build_graph
@@ -28,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
         embedder=OpenAIEmbedder(s.openai_api_key),
         settings=s,
     )
-    state = graph.invoke({"alert_id": args.alert_id})
+    state = asyncio.run(graph.ainvoke({"alert_id": args.alert_id}))
 
     if args.json:
         print(json.dumps(state, indent=2, default=str))

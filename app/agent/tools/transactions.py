@@ -24,16 +24,18 @@ _SIDE = {
 }
 
 
-def query_transactions(conn: psycopg.Connection, **params: Any) -> Evidence:
-    return run_tool(TOOL, QueryTransactionsArgs, params, lambda a: _run(conn, a))
+async def query_transactions(conn: psycopg.AsyncConnection, **params: Any) -> Evidence:
+    return await run_tool(TOOL, QueryTransactionsArgs, params, lambda a: _run(conn, a))
 
 
-def _run(conn: psycopg.Connection, a: QueryTransactionsArgs) -> Evidence:
+async def _run(conn: psycopg.AsyncConnection, a: QueryTransactionsArgs) -> Evidence:
     args = a.model_dump(mode="json")
     q = {"a": a.account_id, "start": a.start, "end": a.end, "n": a.sample_size}
-    with cursor(conn) as cur:
-        cur.execute("SELECT 1 FROM accounts WHERE account_id = %s", (a.account_id,))
-        if cur.fetchone() is None:
+    async with cursor(conn) as cur:
+        await cur.execute(
+            "SELECT 1 FROM accounts WHERE account_id = %s", (a.account_id,)
+        )
+        if await cur.fetchone() is None:
             return build_evidence(
                 TOOL,
                 args,
@@ -46,7 +48,7 @@ def _run(conn: psycopg.Connection, a: QueryTransactionsArgs) -> Evidence:
             "WITH f AS (SELECT t.*, (t.from_account_id = %(a)s) AS is_out "
             f"FROM transactions t WHERE {_SIDE[a.direction]} AND {window_sql()}) "
         )
-        cur.execute(
+        await cur.execute(
             base
             + """SELECT count(*) AS n, count(*) FILTER (WHERE is_out) AS n_out,
                         min(ts) AS first_ts, max(ts) AS last_ts,
@@ -55,7 +57,7 @@ def _run(conn: psycopg.Connection, a: QueryTransactionsArgs) -> Evidence:
                  FROM f""",
             q,
         )
-        total = cur.fetchone()
+        total = await cur.fetchone()
         assert total is not None
         window = window_text(a.start, a.end)
         if total["n"] == 0:
@@ -67,7 +69,7 @@ def _run(conn: psycopg.Connection, a: QueryTransactionsArgs) -> Evidence:
                 {"account_exists": True, "transaction_count": 0},
             )
 
-        cur.execute(
+        await cur.execute(
             base
             + """SELECT payment_currency AS currency,
                         CASE WHEN is_out THEN 'out' ELSE 'in' END AS direction,
@@ -84,15 +86,15 @@ def _run(conn: psycopg.Connection, a: QueryTransactionsArgs) -> Evidence:
                 "total": money(r["total"]),
                 "largest": money(r["largest"]),
             }
-            for r in cur.fetchall()
+            for r in await cur.fetchall()
         ]
-        cur.execute(
+        await cur.execute(
             base + "SELECT payment_format AS format, count(*) AS txn_count FROM f "
             "GROUP BY 1 ORDER BY 2 DESC, 1",
             q,
         )
-        by_format = cur.fetchall()
-        cur.execute(
+        by_format = await cur.fetchall()
+        await cur.execute(
             base
             + """SELECT txn_id, ts, from_account_id, to_account_id, amount_paid,
                         payment_currency, payment_format
@@ -109,7 +111,7 @@ def _run(conn: psycopg.Connection, a: QueryTransactionsArgs) -> Evidence:
                 "currency": r["payment_currency"],
                 "format": r["payment_format"],
             }
-            for r in cur.fetchall()
+            for r in await cur.fetchall()
         ]
 
     n_in = total["n"] - total["n_out"]

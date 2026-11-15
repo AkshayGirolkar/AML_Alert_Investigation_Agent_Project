@@ -86,9 +86,9 @@ def test_defaults_and_timezone_normalisation() -> None:
     assert CounterpartyNetworkArgs(account_id=1).hops == 2
 
 
-def test_invalid_input_returns_error_evidence_without_touching_the_db() -> None:
+async def test_invalid_input_returns_error_evidence_without_touching_the_db() -> None:
     # conn=None would blow up if validation did not short-circuit first.
-    ev = query_transactions(None, account_id=-5)  # type: ignore[arg-type]
+    ev = await query_transactions(None, account_id=-5)  # type: ignore[arg-type]
     assert ev.status == "error"
     assert ev.evidence_id is None
     assert "account_id" in ev.summary
@@ -105,9 +105,9 @@ def test_registry_exposes_the_five_tools_with_schemas() -> None:
         assert "account_id" in schema["required"]
 
 
-def test_registry_tool_returns_error_as_data_not_exception() -> None:
+async def test_registry_tool_returns_error_as_data_not_exception() -> None:
     tools = {t.name: t for t in build_tools(lambda: nullcontext(None))}  # type: ignore[arg-type,return-value]
-    out = tools["counterparty_network"].invoke({"account_id": 1, "hops": 9})
+    out = await tools["counterparty_network"].ainvoke({"account_id": 1, "hops": 9})
     assert out["status"] == "error" and out["evidence_id"] is None
 
 

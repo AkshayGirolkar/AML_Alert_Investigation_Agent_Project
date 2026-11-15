@@ -91,14 +91,14 @@ def test_sql_never_selects_ground_truth() -> None:
 
 
 def _fake_tool(name: str, calls: list[dict[str, Any]]) -> StructuredTool:
-    def run(**kwargs: Any) -> dict[str, Any]:
+    async def run(**kwargs: Any) -> dict[str, Any]:
         calls.append(kwargs)
         n = kwargs.get("sample_size", 0)
         ev = build_evidence(name, kwargs, "ok", f"{name} ran", {"n": n})
         return ev.model_dump(mode="json")
 
     return StructuredTool.from_function(
-        func=run,
+        coroutine=run,
         name=name,
         description="fake",
         args_schema={"type": "object", "properties": {}},
@@ -129,20 +129,20 @@ def _state(checks: list[PlannedCheck]) -> Any:
     }
 
 
-def test_tool_loop_stops_at_cap() -> None:
+async def test_tool_loop_stops_at_cap() -> None:
     calls: list[dict[str, Any]] = []
     checks = [
         PlannedCheck(tool="query_transactions", args={"sample_size": i + 1})
         for i in range(12)
     ]
-    out = _nodes(calls).tool_loop(_state(checks))
+    out = await _nodes(calls).tool_loop(_state(checks))
     assert len(calls) == 8 and out["tool_calls"] == 8
     assert len(out["evidence"]) == 8
     assert len(out["skipped_checks"]) == 4
     assert all("call cap reached" in s for s in out["skipped_checks"])
 
 
-def test_tool_loop_defaults_account_and_dedupes_and_drops_unknown_tools() -> None:
+async def test_tool_loop_defaults_account_and_dedupes_and_drops_unknown_tools() -> None:
     calls: list[dict[str, Any]] = []
     checks = [
         PlannedCheck(tool="query_transactions"),
@@ -150,14 +150,14 @@ def test_tool_loop_defaults_account_and_dedupes_and_drops_unknown_tools() -> Non
         PlannedCheck(tool="rm_rf"),
         PlannedCheck(tool="sanctions_screen", args={"account_id": 99}),
     ]
-    out = _nodes(calls).tool_loop(_state(checks))
+    out = await _nodes(calls).tool_loop(_state(checks))
     assert calls[0] == {"account_id": 7}
     assert calls[-1] == {"account_id": 99}  # explicit args win
     assert len(out["evidence"]) == 2  # duplicate collapsed
     assert out["skipped_checks"] == ["rm_rf: unknown tool"]
 
 
-def test_tool_loop_keeps_error_evidence_but_it_is_not_citable() -> None:
+async def test_tool_loop_keeps_error_evidence_but_it_is_not_citable() -> None:
     def bad(**kwargs: Any) -> dict[str, Any]:
         return build_evidence(
             "query_transactions", kwargs, "error", "bad args"
@@ -171,7 +171,7 @@ def test_tool_loop_keeps_error_evidence_but_it_is_not_citable() -> None:
     )
     settings = Settings(postgres_password="x")  # type: ignore[call-arg]
     nodes = Nodes(lambda: nullcontext(), [tool], FakeLLM(), FakeLLM(), settings)  # type: ignore[arg-type,return-value]
-    out = nodes.tool_loop(_state([PlannedCheck(tool="query_transactions")]))
+    out = await nodes.tool_loop(_state([PlannedCheck(tool="query_transactions")]))
     assert out["evidence"][0]["status"] == "error"
     assert out["evidence"][0]["evidence_id"] is None
     assert check_grounding(
@@ -182,14 +182,14 @@ def test_tool_loop_keeps_error_evidence_but_it_is_not_citable() -> None:
 # --------------------------------------------------------------- draft_sar
 
 
-def test_draft_sar_falls_back_when_narrative_cites_unknown_ids() -> None:
+async def test_draft_sar_falls_back_when_narrative_cites_unknown_ids() -> None:
     ev = build_evidence("query_transactions", {"a": 1}, "ok", "10 txns").model_dump(
         mode="json"
     )
     llm = FakeLLM(SarDraft(narrative="made up", evidence_ids=["nope:1"]))
     settings = Settings(postgres_password="x")  # type: ignore[call-arg]
     nodes = Nodes(lambda: nullcontext(), [], llm, llm, settings)  # type: ignore[arg-type,return-value]
-    out = nodes.draft_sar(
+    out = await nodes.draft_sar(
         {
             "alert": {"alert_id": 1, "rule_id": "fan_out", "account_id": 2},
             "evidence": [ev],
@@ -202,11 +202,11 @@ def test_draft_sar_falls_back_when_narrative_cites_unknown_ids() -> None:
     assert ev["evidence_id"] in (out["sar_draft"] or {})["narrative"]
 
 
-def test_draft_sar_skips_llm_when_ungrounded() -> None:
+async def test_draft_sar_skips_llm_when_ungrounded() -> None:
     llm = FakeLLM()  # any call would raise
     settings = Settings(postgres_password="x")  # type: ignore[call-arg]
     nodes = Nodes(lambda: nullcontext(), [], llm, llm, settings)  # type: ignore[arg-type,return-value]
-    out = nodes.draft_sar(
+    out = await nodes.draft_sar(
         {
             "alert": {"alert_id": 1, "rule_id": "r", "account_id": 2},
             "evidence": [],
@@ -219,10 +219,10 @@ def test_draft_sar_skips_llm_when_ungrounded() -> None:
     assert "could not be grounded" in (out["sar_draft"] or {})["narrative"]
 
 
-def test_fake_llm_rejects_wrong_schema() -> None:
+async def test_fake_llm_rejects_wrong_schema() -> None:
     llm = FakeLLM(InvestigationPlan())
     with pytest.raises(TypeError):
-        llm.structured(Verdict, [])
+        await llm.structured(Verdict, [])
 
 
 # ------------------------------------------------------- scale context / prompts
@@ -309,11 +309,11 @@ def test_settings_parse_no_auto_close_rules() -> None:
     )  # type: ignore[call-arg]
 
 
-def test_policy_forced_escalation_does_not_ask_llm_for_a_sar() -> None:
+async def test_policy_forced_escalation_does_not_ask_llm_for_a_sar() -> None:
     llm = FakeLLM()  # any call would raise
     settings = Settings(postgres_password="x")  # type: ignore[call-arg]
     nodes = Nodes(lambda: nullcontext(), [], llm, llm, settings)  # type: ignore[arg-type,return-value]
-    out = nodes.draft_sar(
+    out = await nodes.draft_sar(
         {
             "alert": {"alert_id": 1, "rule_id": "fan_in", "account_id": 2},
             "evidence": [],

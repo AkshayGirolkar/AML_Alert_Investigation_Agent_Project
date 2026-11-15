@@ -9,7 +9,7 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 MODEL = "text-embedding-3-small"
 DIM = 1536
@@ -26,16 +26,30 @@ class EmbeddingLimitError(RuntimeError):
 class Embedder(Protocol):
     def embed(self, texts: list[str]) -> list[list[float]]: ...
 
+    async def aembed(self, texts: list[str]) -> list[list[float]]: ...
+
 
 class OpenAIEmbedder:
     def __init__(self, api_key: str, model: str = MODEL) -> None:
         from openai import OpenAI
 
         self._client = OpenAI(api_key=api_key)
+        self._api_key = api_key
+        self._aclient: Any = None
         self._model = model
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         resp = self._client.embeddings.create(model=self._model, input=texts)
+        data = sorted(resp.data, key=lambda d: d.index)
+        return [list(d.embedding) for d in data]
+
+    async def aembed(self, texts: list[str]) -> list[list[float]]:
+        # Async client created lazily so the sync scripts never need an event loop.
+        if self._aclient is None:
+            from openai import AsyncOpenAI
+
+            self._aclient = AsyncOpenAI(api_key=self._api_key)
+        resp = await self._aclient.embeddings.create(model=self._model, input=texts)
         data = sorted(resp.data, key=lambda d: d.index)
         return [list(d.embedding) for d in data]
 
@@ -49,6 +63,9 @@ class FakeEmbedder:
     def embed(self, texts: list[str]) -> list[list[float]]:
         self.calls += 1
         return [self._one(t) for t in texts]
+
+    async def aembed(self, texts: list[str]) -> list[list[float]]:
+        return self.embed(texts)
 
     @staticmethod
     def _one(text: str) -> list[float]:

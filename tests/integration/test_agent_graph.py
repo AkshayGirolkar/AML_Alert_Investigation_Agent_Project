@@ -35,7 +35,7 @@ class ScriptedLLM:
         self.verdicts = verdicts
         self.prompts: list[tuple[str, str]] = []
 
-    def structured(self, schema: type[T], messages: Sequence[Message]) -> T:
+    async def structured(self, schema: type[T], messages: Sequence[Message]) -> T:
         user = messages[-1][1]
         self.prompts.append((schema.__name__, user))
         if schema is InvestigationPlan:
@@ -95,14 +95,14 @@ def _alert(w: World, rule: str = "high_velocity") -> int:
     return int(row[0])
 
 
-def _run(w: World, alert_id: int, llm: ScriptedLLM) -> dict[str, Any]:
+async def _run(w: World, alert_id: int, llm: ScriptedLLM) -> dict[str, Any]:
     graph = build_graph(
         make_conn_factory(w.url),
         plan_llm=llm,
         embedder=FakeEmbedder(),
         settings=get_settings(),
     )
-    return graph.invoke({"alert_id": alert_id})  # type: ignore[no-any-return]
+    return await graph.ainvoke({"alert_id": alert_id})  # type: ignore[no-any-return]
 
 
 ESCALATE = {
@@ -121,9 +121,9 @@ CLOSE = {
 UNKNOWN = {**CLOSE, "evidence_ids": ["query_transactions:doesnotexist"]}
 
 
-def test_escalation_end_to_end(w: World) -> None:
+async def test_escalation_end_to_end(w: World) -> None:
     llm = ScriptedLLM([ESCALATE])
-    state = _run(w, _alert(w), llm)
+    state = await _run(w, _alert(w), llm)
     assert state["outcome"] == "escalated" and state["grounded"] is True
     assert state["sar_draft"]["narrative"] == "Suspicious."
     ids = {e["evidence_id"] for e in state["evidence"]}
@@ -131,22 +131,22 @@ def test_escalation_end_to_end(w: World) -> None:
     assert state["tool_calls"] == 1
 
 
-def test_benign_alert_is_closed(w: World) -> None:
-    state = _run(w, _alert(w), ScriptedLLM([CLOSE]))
+async def test_benign_alert_is_closed(w: World) -> None:
+    state = await _run(w, _alert(w), ScriptedLLM([CLOSE]))
     assert state["outcome"] == "closed" and state["sar_draft"] is None
 
 
-def test_ground_truth_never_reaches_state_or_prompts(w: World) -> None:
+async def test_ground_truth_never_reaches_state_or_prompts(w: World) -> None:
     llm = ScriptedLLM([ESCALATE])
-    state = _run(w, _alert(w), llm)
+    state = await _run(w, _alert(w), llm)
     blob = json.dumps(state, default=str) + " ".join(p for _, p in llm.prompts)
     assert SECRET_TYPOLOGY not in blob
     assert "is_true_positive" not in blob
 
 
-def test_unknown_id_is_retried_once_with_feedback(w: World) -> None:
+async def test_unknown_id_is_retried_once_with_feedback(w: World) -> None:
     llm = ScriptedLLM([UNKNOWN, CLOSE])
-    state = _run(w, _alert(w), llm)
+    state = await _run(w, _alert(w), llm)
     assert state["outcome"] == "closed" and state["grounded"] is True
     assert state["grounding_retries"] == 1
     assessed = [p for name, p in llm.prompts if name == "Verdict"]
@@ -155,21 +155,23 @@ def test_unknown_id_is_retried_once_with_feedback(w: World) -> None:
     assert "doesnotexist" in assessed[1]  # feedback names the bad id
 
 
-def test_still_ungrounded_after_retry_is_forced_to_escalate(w: World) -> None:
+async def test_still_ungrounded_after_retry_is_forced_to_escalate(w: World) -> None:
     llm = ScriptedLLM([UNKNOWN, UNKNOWN])
-    state = _run(w, _alert(w), llm)
+    state = await _run(w, _alert(w), llm)
     assert state["outcome"] == "escalated" and state["grounded"] is False
     assert "could not be grounded" in state["sar_draft"]["narrative"]
     assert len([n for n, _ in llm.prompts if n == "Verdict"]) == 2  # exactly one retry
 
 
-def test_unknown_alert_raises(w: World) -> None:
+async def test_unknown_alert_raises(w: World) -> None:
     with pytest.raises(LookupError):
-        _run(w, 999_999, ScriptedLLM([]))
+        await _run(w, 999_999, ScriptedLLM([]))
 
 
-def test_fan_in_is_never_auto_closed_even_when_the_model_says_close(w: World) -> None:
-    state = _run(w, _alert(w, rule="fan_in"), ScriptedLLM([CLOSE]))
+async def test_fan_in_is_never_auto_closed_even_when_the_model_says_close(
+    w: World,
+) -> None:
+    state = await _run(w, _alert(w, rule="fan_in"), ScriptedLLM([CLOSE]))
     assert state["verdict"]["disposition"] == "close"
     assert state["outcome"] == "escalated"
     assert "never auto-closed" in state["escalation_reason"]
