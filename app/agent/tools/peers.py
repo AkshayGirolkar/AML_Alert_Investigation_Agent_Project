@@ -40,8 +40,8 @@ GROUP BY m.entity_id
 """
 
 
-def peer_comparison(conn: psycopg.Connection, **params: Any) -> Evidence:
-    return run_tool(TOOL, PeerComparisonArgs, params, lambda a: _run(conn, a))
+async def peer_comparison(conn: psycopg.AsyncConnection, **params: Any) -> Evidence:
+    return await run_tool(TOOL, PeerComparisonArgs, params, lambda a: _run(conn, a))
 
 
 def _rank(value: Decimal | int, peers: list[Decimal] | list[int]) -> float | None:
@@ -53,10 +53,10 @@ def _rank(value: Decimal | int, peers: list[Decimal] | list[int]) -> float | Non
     return round((below + equal / 2) / len(peers), 3)
 
 
-def _run(conn: psycopg.Connection, a: PeerComparisonArgs) -> Evidence:
+async def _run(conn: psycopg.AsyncConnection, a: PeerComparisonArgs) -> Evidence:
     args = a.model_dump(mode="json")
-    with cursor(conn) as cur:
-        who = entity_of(cur, a.account_id)
+    async with cursor(conn) as cur:
+        who = await entity_of(cur, a.account_id)
         if who is None:
             return build_evidence(
                 TOOL,
@@ -73,7 +73,7 @@ def _run(conn: psycopg.Connection, a: PeerComparisonArgs) -> Evidence:
                 f"Account {a.account_id} has no KYC profile, so no peer group exists.",
                 {"account_exists": True, "has_kyc": False},
             )
-        cur.execute(
+        await cur.execute(
             _STATS,
             {
                 "etype": who["entity_type"],
@@ -84,7 +84,7 @@ def _run(conn: psycopg.Connection, a: PeerComparisonArgs) -> Evidence:
                 "end": a.end,
             },
         )
-        rows = cur.fetchall()
+        rows = await cur.fetchall()
 
     subject = next(r for r in rows if r["is_subject"])
     peers = [r for r in rows if not r["is_subject"]]

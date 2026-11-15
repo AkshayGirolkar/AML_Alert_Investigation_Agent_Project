@@ -58,8 +58,12 @@ SELECT count(DISTINCT cp) AS degree FROM (
 """
 
 
-def counterparty_network(conn: psycopg.Connection, **params: Any) -> Evidence:
-    return run_tool(TOOL, CounterpartyNetworkArgs, params, lambda a: _run(conn, a))
+async def counterparty_network(
+    conn: psycopg.AsyncConnection, **params: Any
+) -> Evidence:
+    return await run_tool(
+        TOOL, CounterpartyNetworkArgs, params, lambda a: _run(conn, a)
+    )
 
 
 def _cycles_through(
@@ -84,12 +88,14 @@ def _cycles_through(
     return sorted(found, key=lambda c: (len(c), c))[:cap]
 
 
-def _run(conn: psycopg.Connection, a: CounterpartyNetworkArgs) -> Evidence:
+async def _run(conn: psycopg.AsyncConnection, a: CounterpartyNetworkArgs) -> Evidence:
     args = a.model_dump(mode="json")
     q = {"a": a.account_id, "start": a.start, "end": a.end}
-    with cursor(conn) as cur:
-        cur.execute("SELECT 1 FROM accounts WHERE account_id = %s", (a.account_id,))
-        if cur.fetchone() is None:
+    async with cursor(conn) as cur:
+        await cur.execute(
+            "SELECT 1 FROM accounts WHERE account_id = %s", (a.account_id,)
+        )
+        if await cur.fetchone() is None:
             return build_evidence(
                 TOOL,
                 args,
@@ -98,8 +104,8 @@ def _run(conn: psycopg.Connection, a: CounterpartyNetworkArgs) -> Evidence:
                 {"account_exists": False},
             )
         window = window_text(a.start, a.end)
-        cur.execute(_ROOT_DEGREE, q)
-        row = cur.fetchone()
+        await cur.execute(_ROOT_DEGREE, q)
+        row = await cur.fetchone()
         assert row is not None
         degree = row["degree"]
         if degree == 0:
@@ -111,11 +117,11 @@ def _run(conn: psycopg.Connection, a: CounterpartyNetworkArgs) -> Evidence:
                 {"account_exists": True, "root_degree": 0},
             )
 
-        cur.execute(_WALK, {**q, "k": a.max_neighbors, "hops": a.hops})
-        hop_of = {r["account_id"]: r["hop"] for r in cur.fetchall()}
+        await cur.execute(_WALK, {**q, "k": a.max_neighbors, "hops": a.hops})
+        hop_of = {r["account_id"]: r["hop"] for r in await cur.fetchall()}
         ids = sorted(hop_of)
 
-        cur.execute(
+        await cur.execute(
             """
             SELECT a.account_id, a.entity_id, e.entity_type, k.country, k.risk_rating
             FROM accounts a JOIN entities e USING (entity_id)
@@ -123,7 +129,7 @@ def _run(conn: psycopg.Connection, a: CounterpartyNetworkArgs) -> Evidence:
             WHERE a.account_id = ANY(%s)""",
             (ids,),
         )
-        info = {r["account_id"]: r for r in cur.fetchall()}
+        info = {r["account_id"]: r for r in await cur.fetchall()}
         nodes = [
             {
                 "account_id": i,
@@ -136,7 +142,7 @@ def _run(conn: psycopg.Connection, a: CounterpartyNetworkArgs) -> Evidence:
             for i in sorted(ids, key=lambda i: (hop_of[i], i))
         ]
 
-        cur.execute(
+        await cur.execute(
             f"""
             SELECT t.from_account_id AS src, t.to_account_id AS dst,
                    t.payment_currency AS currency, count(*) AS txn_count,
@@ -149,7 +155,7 @@ def _run(conn: psycopg.Connection, a: CounterpartyNetworkArgs) -> Evidence:
             LIMIT %(cap)s""",
             {**q, "ids": ids, "cap": MAX_EDGES + 1},
         )
-        rows = cur.fetchall()
+        rows = await cur.fetchall()
 
     edges_truncated = len(rows) > MAX_EDGES
     rows = rows[:MAX_EDGES]

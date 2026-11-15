@@ -5,6 +5,7 @@ Design notes are in docs/features/F02-ingestion.md.
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -22,7 +23,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -237,3 +238,32 @@ class Alert(Base):
         Boolean, server_default=text("false")
     )
     typology: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+# ---------------------------------------------------------------- F07: cases
+
+
+class Case(Base):
+    """One investigation per alert (alert_id is unique, which makes enqueueing idempotent)."""
+
+    __tablename__ = "cases"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','running','completed','failed')",
+            name="ck_cases_status",
+        ),
+        Index("ix_cases_status", "status"),
+    )
+
+    case_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    alert_id: Mapped[int] = mapped_column(ForeignKey("alerts.alert_id"), unique=True)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'queued'"))
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verdict: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    sar_draft: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    escalation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("now()"))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -1,4 +1,4 @@
-"""LangGraph investigation graph (F06). Compiled without a checkpointer (F07 adds one).
+"""LangGraph investigation graph (F06). Async; pass a checkpointer (F07) to make runs resumable.
 
 load_alert -> load_kyc -> plan -> tool_loop -> assess -> validate_grounding
     -> grounded & benign & confident: close_case
@@ -28,6 +28,7 @@ def build_graph(
     assess_llm: LLM | None = None,
     embedder: Embedder | None = None,
     settings: Settings | None = None,
+    checkpointer: Any = None,
 ) -> Any:
     settings = settings or get_settings()
     nodes = Nodes(
@@ -73,4 +74,4 @@ def build_graph(
     g.add_conditional_edges("validate_grounding", after_validation)
     g.add_edge("close_case", END)
     g.add_edge("draft_sar", END)
-    return g.compile()
+    return g.compile(checkpointer=checkpointer)

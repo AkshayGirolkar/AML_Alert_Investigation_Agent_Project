@@ -15,7 +15,7 @@ Message = tuple[str, str]  # (role, content), role in {"system", "user"}
 
 
 class LLM(Protocol):
-    def structured(self, schema: type[T], messages: Sequence[Message]) -> T: ...
+    async def structured(self, schema: type[T], messages: Sequence[Message]) -> T: ...
 
 
 class OpenAILLM:
@@ -28,11 +28,11 @@ class OpenAILLM:
             temperature=temperature,
         )
 
-    def structured(self, schema: type[T], messages: Sequence[Message]) -> T:
+    async def structured(self, schema: type[T], messages: Sequence[Message]) -> T:
         # function_calling, not OpenAI's strict json_schema mode: the plan's free-form
         # `args` dict is rejected there. We validate the result with pydantic below.
         runnable = self._chat.with_structured_output(schema, method="function_calling")
-        result = runnable.invoke(list(messages))
+        result = await runnable.ainvoke(list(messages))
         if isinstance(result, schema):
             return result
         return schema.model_validate(result)
@@ -45,7 +45,7 @@ class FakeLLM:
         self._queue: list[BaseModel | Exception] = list(answers)
         self.calls: list[tuple[str, Sequence[Message]]] = []
 
-    def structured(self, schema: type[T], messages: Sequence[Message]) -> T:
+    async def structured(self, schema: type[T], messages: Sequence[Message]) -> T:
         self.calls.append((schema.__name__, messages))
         if not self._queue:
             raise AssertionError(f"FakeLLM has no answer left for {schema.__name__}")

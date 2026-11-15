@@ -1,6 +1,6 @@
 """Shared helpers for the F05 tools."""
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, TypeVar
@@ -14,11 +14,11 @@ from app.agent.evidence import Evidence, build_evidence
 A = TypeVar("A", bound=BaseModel)
 
 
-def run_tool(
+async def run_tool(
     tool: str,
     model: type[A],
     params: dict[str, Any],
-    impl: Callable[[A], Evidence],
+    impl: Callable[[A], Awaitable[Evidence]],
 ) -> Evidence:
     """Validate `params`; invalid input becomes an error Evidence (never an exception).
 
@@ -32,10 +32,10 @@ def run_tool(
             for e in exc.errors()
         )
         return build_evidence(tool, params, "error", f"Invalid arguments: {problems}")
-    return impl(args)
+    return await impl(args)
 
 
-def cursor(conn: psycopg.Connection) -> psycopg.Cursor[dict[str, Any]]:
+def cursor(conn: psycopg.AsyncConnection) -> psycopg.AsyncCursor[dict[str, Any]]:
     return conn.cursor(row_factory=dict_row)
 
 
@@ -50,11 +50,11 @@ def iso(v: datetime | date | None) -> str | None:
     return v.isoformat() if v is not None else None
 
 
-def entity_of(
-    cur: psycopg.Cursor[dict[str, Any]], account_id: int
+async def entity_of(
+    cur: psycopg.AsyncCursor[dict[str, Any]], account_id: int
 ) -> dict[str, Any] | None:
     """Account -> entity + KYC columns (kyc_* are None when the entity has no profile)."""
-    cur.execute(
+    await cur.execute(
         """
         SELECT a.account_id, a.entity_id, e.entity_type,
                k.entity_id IS NOT NULL AS has_kyc,
@@ -65,7 +65,7 @@ def entity_of(
         WHERE a.account_id = %s""",
         (account_id,),
     )
-    return cur.fetchone()
+    return await cur.fetchone()
 
 
 def window_sql(alias: str = "t") -> str:

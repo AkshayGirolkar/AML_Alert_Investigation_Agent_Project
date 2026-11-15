@@ -28,6 +28,17 @@ class Settings(BaseSettings):
     # evidence the agent can tell true from false alerts for these; a human decides.
     no_auto_close_rules: str = "fan_in,high_risk_counterparty"
 
+    # F07 async execution (SQS via LocalStack locally; endpoint unset on real AWS)
+    aws_region: str = "us-east-1"
+    aws_endpoint_url: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    sqs_queue_name: str = "aml-investigations"
+    sqs_dlq_name: str = "aml-investigations-dlq"
+    sqs_max_receive_count: int = 3
+    sqs_visibility_timeout: int = 300  # seconds; must exceed one investigation
+    worker_concurrency: int = 4
+
     # F04 rules engine thresholds (see app/rules/config.py for meaning and validation)
     rule_velocity_window_hours: int = 1
     rule_velocity_min_txns: int = 10
