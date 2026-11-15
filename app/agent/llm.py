@@ -29,7 +29,9 @@ class OpenAILLM:
         )
 
     def structured(self, schema: type[T], messages: Sequence[Message]) -> T:
-        runnable = self._chat.with_structured_output(schema)
+        # function_calling, not OpenAI's strict json_schema mode: the plan's free-form
+        # `args` dict is rejected there. We validate the result with pydantic below.
+        runnable = self._chat.with_structured_output(schema, method="function_calling")
         result = runnable.invoke(list(messages))
         if isinstance(result, schema):
             return result

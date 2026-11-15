@@ -1,0 +1,161 @@
+F06 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+F04 raises alerts and F05 gave us five lookup tools. Nobody yet makes the
+actual decision for an alert: close it as a false alarm, or escalate it to a
+human. F06 builds the agent that makes that call.
+
+
+2. THE PROBLEM F06 SOLVES
+-------------------------
+An agent that decides on its own has three risks:
+
+  - Making things up. A language model can sound sure while citing facts that
+    don't exist.
+  - Never stopping. It could keep calling tools forever, which costs money.
+  - Cheating. The data knows which alerts are real laundering. If the agent
+    could see that, the evaluation would be meaningless.
+
+
+3. HOW F06 SOLVES IT
+--------------------
+I built a flow chart, using a library called LangGraph. Each box is a step, and
+plain Python code controls the arrows between them. The AI only reasons and
+writes. Code does the checking and the final decisions.
+
+  read alert -> read customer profile -> plan checks -> run checks (max 8)
+     -> give verdict -> check the evidence is real
+          real, low risk, confident  -> CLOSE
+          fake IDs, first time       -> ask again once
+          anything else              -> ESCALATE with a draft report
+
+The steps, with an example (account 7 sent money to 15 accounts in a day):
+
+  load_alert          Reads the alert from the database. It names the columns
+                      it reads, so the answer-key columns are never fetched.
+                      (Analogy: opens the case file with the answer page torn
+                      out.)
+
+  load_kyc            Reads the customer's profile: job, country, declared
+                      volume, risk rating.
+                      (Analogy: pulls the customer card.)
+
+  plan                The AI picks which checks to run. Its answer must fit a
+                      fixed form, so it can't reply with free text.
+                      (Analogy: the detective writes a to-do list.)
+
+  tool_loop           Runs the F05 tools. The code stops it at 8 calls, skips
+                      made-up tool names, and merges repeated questions.
+                      (Analogy: a foreman who won't let the detective run past
+                      the budget.)
+
+  assess              The AI gives a verdict: close or escalate, risk 0-1,
+                      confidence 0-1, typology, and the receipt IDs it relied
+                      on.
+                      (Analogy: the detective's written conclusion.)
+
+  validate_grounding  Code checks that every cited receipt ID really exists.
+                      (Analogy: the auditor checking footnotes.)
+
+  close_case          Records "closed".
+                      (Analogy: stamp: dismissed.)
+
+  draft_sar           Writes a draft suspicious activity report for a human.
+                      (Analogy: hands the file to a senior analyst.)
+
+
+FILES ADDED UNDER app/agent/
+----------------------------
+Think of it as a kitchen: the graph is the recipe, and the other files are the
+equipment.
+
+graph.py
+    The flow chart: which step comes next, and when to branch or loop back.
+    (Analogy: the recipe.)
+
+nodes.py
+    The code for each step.
+    (Analogy: the cooks.)
+
+routing.py
+    Two pure decision functions: "are the citations real?" and "close or
+    escalate?". It touches no database and no AI, so it is easy to test.
+    (Analogy: the rulebook.)
+
+schemas.py
+    The shapes the AI must answer in: the plan, the verdict (scores limited to
+    0-1), and the report draft.
+    (Analogy: the forms.)
+
+state.py
+    The notebook the graph carries from step to step. It holds only plain data,
+    so a later feature can save and resume it.
+    (Analogy: the case folder.)
+
+llm.py
+    A thin wrapper around the AI model (OpenAI), plus a scripted fake for
+    tests.
+    (Analogy: a plug socket, so we can swap the real AI for a stand-in.)
+
+prompts.py
+    The instructions given to the AI at each step.
+    (Analogy: the briefing notes.)
+
+run.py
+    The command-line entry point:
+    python -m app.agent.run --alert-id 42
+    (Analogy: the front door.)
+
+
+OTHER FILES ADDED OR CHANGED FOR F06
+------------------------------------
+docs/features/F06-agent-graph.md      The spec: scope, decisions, done criteria.
+docs/adr/0001-f06-sync-graph.md       A short record of why the graph is
+                                      synchronous and plans before it acts.
+tests/unit/test_agent_graph.py        18 fast tests, no database needed.
+tests/integration/test_agent_graph.py 6 end-to-end tests against real Postgres
+                                      with a scripted AI.
+app/config.py and .env.example        New settings: model names, the 8-call
+                                      cap, the close thresholds.
+requirements.txt                      Added langgraph and langchain-openai.
+
+
+SAFETY RULES BUILT IN
+---------------------
+  - The answer key stays hidden. The alert's is_true_positive and typology
+    columns are never read. A test checks they appear in neither the state nor
+    the AI's prompts.
+  - The call cap is enforced by code. The AI can't talk its way past 8.
+  - Every claim needs a real receipt. Fake IDs get one retry, with the bad IDs
+    named. After that the case is escalated.
+  - Uncertain means a human looks. Auto-close needs all of these: the verdict
+    says close, the citations are real, risk is at most 0.30, and confidence is
+    at least 0.80.
+  - The report can't invent facts. If the AI's draft cites a receipt that
+    doesn't exist, it is thrown away. A plain draft is then built from the
+    tools' own one-line summaries, with no AI involved.
+  - The AI still does no maths. Every number comes from the tool receipts.
+
+
+WHERE THIS FITS
+---------------
+  F04 rules create alerts  ->  F05 tools  ->  F06 agent (built, partly
+  verified)  ->  F07 queue and crash recovery  ->  F08 human approval  ->
+  F09 memory
+
+F05 built the toolbox. F06 builds the agent that uses it.
+
+
+KNOWN LIMITATIONS
+-----------------
+  - Integration tests haven't run. Docker wasn't running, so the 6 end-to-end
+    tests were skipped. The 18 unit tests pass, and ruff and mypy are clean.
+  - No real AI run yet. The prompts and the default models (gpt-4o-mini to
+    plan, gpt-4o to decide) are first guesses, and no run against the real
+    OpenAI API has happened. F15's evaluation is where they get tuned.
+  - Nothing is saved yet. There are no case or evidence tables, and no way to
+    pause and resume. Those belong to F07 and F08.
+  - Nothing is committed. All changes were uncommitted on branch
+    AML_Akshay_09Nov when this was written.

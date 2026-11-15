@@ -80,7 +80,7 @@ def w(_db: str) -> Iterator[World]:
     yield World(_db)
 
 
-def _alert(w: World) -> int:
+def _alert(w: World, rule: str = "high_velocity") -> int:
     """One account with a few txns and an alert carrying ground-truth labels."""
     a, b = w.account(), w.account()
     txns = [w.txn(a, b, DAY + timedelta(hours=i), 100.0) for i in range(3)]
@@ -88,8 +88,8 @@ def _alert(w: World) -> int:
         row = c.execute(
             "INSERT INTO alerts (rule_id, account_id, window_start, window_end, "
             "trigger_txn_ids, score, is_true_positive, typology) "
-            "VALUES ('high_velocity', %s, %s, %s, %s, 0.5, true, %s) RETURNING alert_id",
-            (a, DAY, DAY + timedelta(days=1), txns, SECRET_TYPOLOGY),
+            "VALUES (%s, %s, %s, %s, %s, 0.5, true, %s) RETURNING alert_id",
+            (rule, a, DAY, DAY + timedelta(days=1), txns, SECRET_TYPOLOGY),
         ).fetchone()
     assert row is not None
     return int(row[0])
@@ -166,3 +166,11 @@ def test_still_ungrounded_after_retry_is_forced_to_escalate(w: World) -> None:
 def test_unknown_alert_raises(w: World) -> None:
     with pytest.raises(LookupError):
         _run(w, 999_999, ScriptedLLM([]))
+
+
+def test_fan_in_is_never_auto_closed_even_when_the_model_says_close(w: World) -> None:
+    state = _run(w, _alert(w, rule="fan_in"), ScriptedLLM([CLOSE]))
+    assert state["verdict"]["disposition"] == "close"
+    assert state["outcome"] == "escalated"
+    assert "never auto-closed" in state["escalation_reason"]
+    assert "low risk" in state["sar_draft"]["narrative"]

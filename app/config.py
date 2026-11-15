@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     max_tool_calls: int = 8
     close_risk_max: float = 0.30  # auto-close only at or below this risk score
     close_confidence_min: float = 0.80  # ...and at or above this confidence
+    # Rules the agent may never auto-close (comma-separated). Batch evals showed no
+    # evidence the agent can tell true from false alerts for these; a human decides.
+    no_auto_close_rules: str = "fan_in,high_risk_counterparty"
 
     # F04 rules engine thresholds (see app/rules/config.py for meaning and validation)
     rule_velocity_window_hours: int = 1
@@ -40,6 +43,12 @@ class Settings(BaseSettings):
     rule_high_risk_ratings: str = "high"  # comma-separated
     rule_high_risk_window_hours: int = 24
     rule_sanctions_similarity: float = 0.5
+
+    @property
+    def no_auto_close_rule_set(self) -> frozenset[str]:
+        return frozenset(
+            r.strip() for r in self.no_auto_close_rules.split(",") if r.strip()
+        )
 
     @property
     def sync_database_url(self) -> str:

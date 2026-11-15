@@ -46,7 +46,12 @@ def build_graph(
             return "assess"
         verdict = Verdict.model_validate(state["verdict"])
         return route_verdict(
-            verdict, grounded, settings.close_risk_max, settings.close_confidence_min
+            verdict,
+            grounded,
+            settings.close_risk_max,
+            settings.close_confidence_min,
+            state["alert"]["rule_id"],
+            settings.no_auto_close_rule_set,
         )
 
     g = StateGraph(InvestigationState)
