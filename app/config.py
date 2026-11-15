@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     data_dir: Path = Path("data")
 
+    # F06 agent graph
+    llm_plan_model: str = "gpt-4o-mini"
+    llm_assess_model: str = "gpt-4o"
+    max_tool_calls: int = 8
+    close_risk_max: float = 0.30  # auto-close only at or below this risk score
+    close_confidence_min: float = 0.80  # ...and at or above this confidence
+
     # F04 rules engine thresholds (see app/rules/config.py for meaning and validation)
     rule_velocity_window_hours: int = 1
     rule_velocity_min_txns: int = 10
