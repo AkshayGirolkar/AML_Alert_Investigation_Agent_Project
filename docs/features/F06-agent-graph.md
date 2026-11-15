@@ -24,6 +24,8 @@ SQS/worker, checkpointing (`PostgresSaver`), `interrupt()` / analyst approval, l
 - The 8-call cap is enforced in code, not in the prompt. Duplicate calls collapse because evidence IDs are deterministic. Error results are kept in state but are not citable.
 - The LLM never does arithmetic; all numbers come from tool evidence.
 - Fail safe: a verdict that is still ungrounded after one retry is forced to `escalate`. Auto-close needs `disposition == close`, grounded, `risk_score <= close_risk_max` and `confidence >= close_confidence_min`.
+- Rules the agent may never auto-close: `NO_AUTO_CLOSE_RULES` (default `fan_in,high_risk_counterparty`). In a 113-alert batch the agent closed 9 of 35 real laundering alerts it had not been tuned on, 7 of them in these two rules, where no signal separating true from false alerts was found. A model verdict of "close" on these rules is still escalated, with `escalation_reason` set and a deterministic draft (the model is not asked to write a SAR for an alert it judged benign). Revisit when better evidence exists for these rules.
+- The model's `confidence` is not informative (every closure reported 0.90) and its `risk_score` moves in 0.1 steps, so the thresholds are a weak gate on their own.
 - No `cases/evidence/decisions` tables yet (F07/F08).
 
 ## Acceptance criteria

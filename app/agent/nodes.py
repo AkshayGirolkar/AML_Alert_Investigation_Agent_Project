@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from app.agent import prompts
 from app.agent.evidence import Evidence
 from app.agent.llm import LLM
-from app.agent.routing import check_grounding
+from app.agent.routing import alert_context, check_grounding, escalation_reason
 from app.agent.schemas import InvestigationPlan, SarDraft, Verdict
 from app.agent.state import InvestigationState
 from app.agent.tools.registry import ConnFactory
@@ -64,8 +64,10 @@ class Nodes:
             row = cur.execute(ALERT_SQL, (state["alert_id"],)).fetchone()
         if row is None:
             raise LookupError(f"alert {state['alert_id']} not found")
+        alert = jsonable(row)
+        alert.update(alert_context(alert, self._settings))
         return {
-            "alert": jsonable(row),
+            "alert": alert,
             "evidence": [],
             "tool_calls": 0,
             "skipped_checks": [],
@@ -157,8 +159,19 @@ class Nodes:
         evidence = state.get("evidence", [])
         known = {e["evidence_id"] for e in evidence if e["evidence_id"]}
         verdict = state.get("verdict") or {}
+        cfg = self._settings
+        reason = escalation_reason(
+            Verdict.model_validate(verdict) if verdict else None,
+            state.get("grounded", False),
+            cfg.close_risk_max,
+            cfg.close_confidence_min,
+            state["alert"]["rule_id"],
+            cfg.no_auto_close_rule_set,
+        )
         draft: SarDraft | None = None
-        if state.get("grounded"):
+        # If the model itself judged the alert benign (policy forced the escalation),
+        # do not ask it to write a suspicious-activity narrative; state the reason.
+        if state.get("grounded") and verdict.get("disposition") == "escalate":
             draft = self._assess_llm.structured(
                 SarDraft,
                 [
@@ -174,11 +187,15 @@ class Nodes:
             if not set(draft.evidence_ids) <= known or not draft.evidence_ids:
                 draft = None  # the narrative cites something we cannot back up
         if draft is None:
-            draft = _fallback_sar(state)
-        return {"outcome": "escalated", "sar_draft": draft.model_dump()}
+            draft = _fallback_sar(state, reason)
+        return {
+            "outcome": "escalated",
+            "escalation_reason": reason,
+            "sar_draft": draft.model_dump(),
+        }
 
 
-def _fallback_sar(state: InvestigationState) -> SarDraft:
+def _fallback_sar(state: InvestigationState, reason: str | None = None) -> SarDraft:
     """Deterministic draft built only from tool summaries (no LLM, no invented facts)."""
     ok = [e for e in state.get("evidence", []) if e["evidence_id"]]
     lines = [f"- {e['summary']} [{e['evidence_id']}]" for e in ok]
@@ -189,6 +206,13 @@ def _fallback_sar(state: InvestigationState) -> SarDraft:
     )
     if state.get("grounding_errors"):
         head += " The automated verdict could not be grounded in evidence."
+    elif reason and (state.get("verdict") or {}).get("disposition") == "close":
+        v = state["verdict"] or {}
+        head += (
+            f" Reason: {reason}. The agent assessed it as low risk "
+            f"(risk {v['risk_score']:.2f}, confidence {v['confidence']:.2f}): "
+            f"{v.get('rationale', '')}"
+        )
     return SarDraft(
         narrative="\n".join([head, *lines]),
         evidence_ids=[e["evidence_id"] for e in ok],

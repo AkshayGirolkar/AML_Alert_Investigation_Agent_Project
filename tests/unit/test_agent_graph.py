@@ -223,3 +223,105 @@ def test_fake_llm_rejects_wrong_schema() -> None:
     llm = FakeLLM(InvestigationPlan())
     with pytest.raises(TypeError):
         llm.structured(Verdict, [])
+
+
+# ------------------------------------------------------- scale context / prompts
+
+
+def test_alert_context_scale_is_computed_in_python() -> None:
+    from app.agent.routing import alert_context
+
+    s = Settings(postgres_password="x")  # type: ignore[call-arg]
+    ctx = alert_context(
+        {"rule_id": "high_velocity", "trigger_txn_ids": list(range(50))}, s
+    )
+    assert ctx == {
+        "trigger_txn_count": 50,
+        "rule_threshold": "10 transactions",
+        "times_threshold": 5.0,
+    }
+    # Rules without a simple count threshold only get the count.
+    assert alert_context({"rule_id": "round_trip", "trigger_txn_ids": [1, 2]}, s) == {
+        "trigger_txn_count": 2
+    }
+
+
+def test_prompt_view_drops_long_id_lists() -> None:
+    from app.agent.prompts import alert_view, assess_user
+
+    alert = {
+        "alert_id": 1,
+        "trigger_txn_ids": list(range(3000)),
+        "trigger_txn_count": 3000,
+    }
+    view = alert_view(alert)
+    assert "trigger_txn_ids" not in view and view["trigger_txn_sample"] == [
+        0,
+        1,
+        2,
+        3,
+        4,
+    ]
+    assert len(assess_user(alert, None, [], [])) < 2000
+
+
+# ------------------------------------------------------------ no-auto-close rules
+
+
+NO_CLOSE = frozenset({"fan_in", "high_risk_counterparty"})
+
+
+@pytest.mark.parametrize(
+    ("rule", "expected"),
+    [
+        ("fan_in", "draft_sar"),
+        ("high_risk_counterparty", "draft_sar"),
+        ("fan_out", "close_case"),
+        ("", "close_case"),
+    ],
+)
+def test_rules_without_reliable_signal_never_auto_close(
+    rule: str, expected: str
+) -> None:
+    got = route_verdict(_verdict(), True, 0.30, 0.80, rule, NO_CLOSE)
+    assert got == expected
+
+
+def test_escalation_reason_is_none_only_when_closing() -> None:
+    from app.agent.routing import escalation_reason
+
+    assert escalation_reason(_verdict(), True, 0.3, 0.8, "fan_out", NO_CLOSE) is None
+    assert "never auto-closed" in str(
+        escalation_reason(_verdict(), True, 0.3, 0.8, "fan_in", NO_CLOSE)
+    )
+    assert "not grounded" in str(escalation_reason(_verdict(), False, 0.3, 0.8))
+    assert "risk score" in str(
+        escalation_reason(_verdict(risk_score=0.5), True, 0.3, 0.8)
+    )
+
+
+def test_settings_parse_no_auto_close_rules() -> None:
+    s = Settings(postgres_password="x", no_auto_close_rules=" fan_in , ,round_trip")  # type: ignore[call-arg]
+    assert s.no_auto_close_rule_set == {"fan_in", "round_trip"}
+    assert (
+        Settings(postgres_password="x", no_auto_close_rules="").no_auto_close_rule_set
+        == frozenset()
+    )  # type: ignore[call-arg]
+
+
+def test_policy_forced_escalation_does_not_ask_llm_for_a_sar() -> None:
+    llm = FakeLLM()  # any call would raise
+    settings = Settings(postgres_password="x")  # type: ignore[call-arg]
+    nodes = Nodes(lambda: nullcontext(), [], llm, llm, settings)  # type: ignore[arg-type,return-value]
+    out = nodes.draft_sar(
+        {
+            "alert": {"alert_id": 1, "rule_id": "fan_in", "account_id": 2},
+            "evidence": [],
+            "verdict": _verdict(rationale="ordinary activity").model_dump(),
+            "grounded": True,
+        }
+    )
+    assert out["outcome"] == "escalated"
+    assert "never auto-closed" in str(out["escalation_reason"])
+    narrative = (out["sar_draft"] or {})["narrative"]
+    assert "low risk" in narrative and "ordinary activity" in narrative

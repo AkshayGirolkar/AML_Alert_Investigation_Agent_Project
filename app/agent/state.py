@@ -16,4 +16,5 @@ class InvestigationState(TypedDict, total=False):
     grounding_errors: list[str]
     grounding_retries: int
     outcome: Literal["closed", "escalated"]
+    escalation_reason: str | None  # why it was not auto-closed (None when closed)
     sar_draft: dict[str, Any] | None
