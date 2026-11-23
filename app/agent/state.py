@@ -18,3 +18,7 @@ class InvestigationState(TypedDict, total=False):
     outcome: Literal["closed", "escalated"]
     escalation_reason: str | None  # why it was not auto-closed (None when closed)
     sar_draft: dict[str, Any] | None
+    # F08: set by human_review once the analyst has decided
+    decision: Literal["approve", "reject"]
+    analyst_id: str
+    analyst_notes: str | None

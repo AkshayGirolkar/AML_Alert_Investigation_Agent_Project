@@ -1,8 +1,16 @@
-"""CLI: investigate one alert.  python -m app.agent.run --alert-id 123"""
+"""CLI: investigate one alert.  python -m app.agent.run --alert-id 123 [--decision approve]
+
+Escalated alerts stop for analyst review. The CLI uses an in-memory checkpointer, so the
+decision must be given in the same run (--decision approve|reject, optional --notes).
+"""
 
 import argparse
 import asyncio
 import json
+from typing import Any
+
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
 
 from app.agent.graph import build_graph
 from app.agent.llm import OpenAILLM
@@ -17,6 +25,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--json", action="store_true", help="print the full final state"
     )
+    parser.add_argument("--decision", choices=["approve", "reject"])
+    parser.add_argument("--analyst-id", default="cli")
+    parser.add_argument("--notes")
     args = parser.parse_args(argv)
 
     s = get_settings()
@@ -28,14 +39,30 @@ def main(argv: list[str] | None = None) -> int:
         assess_llm=OpenAILLM(s.llm_assess_model, s.openai_api_key),
         embedder=OpenAIEmbedder(s.openai_api_key),
         settings=s,
+        checkpointer=MemorySaver(),
     )
-    state = asyncio.run(graph.ainvoke({"alert_id": args.alert_id}))
+
+    async def investigate() -> dict[str, Any]:
+        config = {"configurable": {"thread_id": f"cli-{args.alert_id}"}}
+        state: dict[str, Any] = await graph.ainvoke({"alert_id": args.alert_id}, config)
+        if state.get("__interrupt__") and args.decision:
+            resume = {
+                "decision": args.decision,
+                "analyst_id": args.analyst_id,
+                "notes": args.notes,
+            }
+            state = await graph.ainvoke(Command(resume=resume), config)
+        return state
+
+    state = asyncio.run(investigate())
+    paused = bool(state.get("__interrupt__"))
 
     if args.json:
         print(json.dumps(state, indent=2, default=str))
         return 0
     v = state["verdict"]
-    print(f"Alert {args.alert_id}: {state['outcome'].upper()}")
+    label = "AWAITING REVIEW" if paused else state["outcome"].upper()
+    print(f"Alert {args.alert_id}: {label}")
     print(
         f"  disposition={v['disposition']} typology={v['typology']} "
         f"risk={v['risk_score']:.2f} confidence={v['confidence']:.2f} "
@@ -47,6 +74,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  [{e['evidence_id']}] {e['status']}: {e['summary']}")
     if state.get("sar_draft"):
         print("\nSAR draft:\n" + state["sar_draft"]["narrative"])
+    if paused:
+        print("\nPaused for analyst review. Re-run with --decision approve|reject.")
+    elif state.get("decision"):
+        print(f"\nAnalyst {state['analyst_id']}: {state['decision']}")
     return 0
 
 

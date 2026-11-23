@@ -48,6 +48,8 @@ ruff check . && mypy .
 
 F07 (async): `docker compose up -d --build` runs postgres, localstack (SQS), migrate, api (:8000) and worker; `python -m app.worker` runs the worker locally, `uvicorn app.main:app` the API. Everything in `app/agent` is async now. SQS integration tests need LocalStack (`docker compose up -d localstack`) and are skipped otherwise. `requirements.lock` (uv compile) is what the Dockerfile installs: regenerate it when `requirements.txt` changes.
 
+F08 (human review): escalated cases pause at `human_review` (`interrupt()`), status `awaiting_review`; `POST /cases/{id}/decision` records the decision (`decisions`, `audit_log`) and sends a `resume` SQS message that the worker turns into `Command(resume=...)`. `python -m app.agent.run --alert-id N --decision approve` demos it with an in-memory checkpointer. No auth yet (F11), so `analyst_id` is in the request body.
+
 Not built yet: redis in `docker-compose.yml`, GitHub Actions CI, `pyproject.toml`.
 
 Required env in `.env` (never commit): `OPENAI_API_KEY`, `LANGSMITH_API_KEY`, `LANGSMITH_TRACING=true`, optional `ANTHROPIC_API_KEY`. Kaggle download needs `~/.kaggle/kaggle.json`.

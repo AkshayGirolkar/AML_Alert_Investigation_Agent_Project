@@ -52,6 +52,17 @@ async def test_send_receive_delete_roundtrip(
     assert (msg.case_id, msg.alert_id, msg.receive_count) == (5, 7, 1)
     await q.delete(msg.receipt_handle)
     assert await q.receive(max_messages=1, wait_seconds=1) == []
+    assert msg.kind == "investigate"  # default; pre-F08 bodies had no type
+
+
+async def test_resume_message_kind_roundtrips(
+    queues: tuple[SqsQueue, SqsQueue, str],
+) -> None:
+    q, _, _ = queues
+    await q.send(case_id=5, alert_id=7, kind="resume")
+    [msg] = await q.receive(max_messages=1, wait_seconds=2)
+    assert msg.kind == "resume" and (msg.case_id, msg.alert_id) == (5, 7)
+    await q.delete(msg.receipt_handle)
 
 
 async def test_undeleted_message_is_redelivered_then_dead_lettered(

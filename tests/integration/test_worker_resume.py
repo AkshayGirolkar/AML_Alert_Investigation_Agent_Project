@@ -167,17 +167,121 @@ async def test_case_lifecycle_retry_then_complete(
     row = await store.get(case["case_id"])
     assert row and row["status"] == "queued" and "worker died" in row["error"]
 
+    # F08: an escalation pauses for the analyst instead of completing.
     second = await proc.handle(QueueMessage("r2", case["case_id"], alert_id, 2))
-    assert second == "completed" and queue.deleted == ["r2"]
+    assert second == "awaiting_review" and queue.deleted == ["r2"]
     row = await store.get(case["case_id"])
-    assert row and row["status"] == "completed" and row["attempts"] == 2
-    assert row["outcome"] == "escalated" and row["verdict"]["disposition"] == "escalate"
-    assert row["error"] is None and row["sar_draft"]["narrative"]
+    assert row and row["status"] == "awaiting_review" and row["attempts"] == 2
+    assert row["outcome"] is None and row["completed_at"] is None
+    assert row["verdict"]["disposition"] == "escalate" and row["sar_draft"]["narrative"]
+    assert row["error"] is None
 
-    # Redelivery of a finished case: acked, nothing re-run.
+    # Redelivery while waiting for the analyst: acked, nothing re-run.
     dup = await proc.handle(QueueMessage("r3", case["case_id"], alert_id, 3))
     assert dup == "skipped" and queue.deleted == ["r2", "r3"]
     assert [n for n, _ in llm.prompts].count("InvestigationPlan") == 1
+
+
+async def _paused_case(
+    w: World, checkpointer: Any, engine: AsyncEngine
+) -> tuple[SqlCaseStore, Processor, _Q, ScriptedLLM, dict[str, Any], int]:
+    store, queue, llm = SqlCaseStore(engine), _Q(), ScriptedLLM([ESCALATE])
+    alert_id = _alert(w)
+    case, _ = await store.create_or_get(alert_id)
+    proc = Processor(_graph(w, llm, checkpointer), store, queue, 3, 300)  # type: ignore[arg-type]
+    res = await proc.handle(QueueMessage("r1", case["case_id"], alert_id, 1))
+    assert res == "awaiting_review"
+    return store, proc, queue, llm, case, alert_id
+
+
+@pytest.mark.parametrize(
+    ("decision", "outcome"), [("approve", "escalated"), ("reject", "closed")]
+)
+async def test_analyst_decision_resumes_the_paused_graph(
+    w: World, checkpointer: Any, engine: AsyncEngine, decision: str, outcome: str
+) -> None:
+    store, proc, queue, llm, case, alert_id = await _paused_case(
+        w, checkpointer, engine
+    )
+    cid = case["case_id"]
+
+    result, row, status = await store.record_decision(cid, decision, "ana", "looks ok")
+    assert result == "recorded" and status == "awaiting_review"
+    assert row and row["decision"] == decision
+
+    msg = QueueMessage("r2", cid, alert_id, 1, kind="resume")
+    assert await proc.handle(msg) == "completed"
+    done = await store.get(cid)
+    assert done and done["status"] == "completed" and done["outcome"] == outcome
+    assert done["completed_at"] is not None
+    # Nothing was re-investigated; the LLM was only used before the pause.
+    assert [n for n, _ in llm.prompts].count("InvestigationPlan") == 1
+
+    # A duplicate resume message is acked and changes nothing.
+    again = await proc.handle(QueueMessage("r3", cid, alert_id, 2, kind="resume"))
+    assert again == "skipped" and queue.deleted[-1] == "r3"
+    assert (await store.get(cid)) == done
+
+
+async def test_decision_is_recorded_once_with_an_audit_row(
+    w: World, checkpointer: Any, engine: AsyncEngine
+) -> None:
+    store, _, _, _, case, _ = await _paused_case(w, checkpointer, engine)
+    cid = case["case_id"]
+    assert (await store.record_decision(cid, "approve", "ana", None))[0] == "recorded"
+    assert (await store.record_decision(cid, "approve", "ana", None))[0] == "duplicate"
+    assert (await store.record_decision(cid, "reject", "bob", None))[0] == "conflict"
+    assert (await store.record_decision(9999, "approve", "ana", None))[0] == "not_found"
+    async with engine.connect() as c:
+        n = (await c.execute(text("SELECT count(*) FROM decisions"))).scalar_one()
+        audit = (await c.execute(text("SELECT actor, action FROM audit_log"))).all()
+    assert n == 1 and [tuple(r) for r in audit] == [("ana", "decision_approve")]
+
+
+async def test_decision_before_review_is_not_reviewable(
+    w: World, checkpointer: Any, engine: AsyncEngine
+) -> None:
+    store = SqlCaseStore(engine)
+    case, _ = await store.create_or_get(_alert(w))
+    result, _, status = await store.record_decision(case["case_id"], "approve", "a", "")
+    assert result == "not_reviewable" and status == "queued"
+
+
+async def test_restarted_worker_leaves_a_paused_case_paused(
+    w: World, checkpointer: Any, engine: AsyncEngine
+) -> None:
+    store, _, _, _, case, alert_id = await _paused_case(w, checkpointer, engine)
+    # New worker process + the same investigate message redelivered after the pause.
+    fresh = Processor(_graph(w, ScriptedLLM([]), checkpointer), store, _Q(), 3, 300)  # type: ignore[arg-type]
+    res = await fresh.handle(QueueMessage("r9", case["case_id"], alert_id, 2))
+    assert res == "skipped"
+    row = await store.get(case["case_id"])
+    assert row and row["status"] == "awaiting_review"
+    # A crash between the pause and the DB write is recovered without re-investigating.
+    state = await run_graph(_graph(w, ScriptedLLM([]), checkpointer), alert_id)
+    assert state["__interrupt__"] and state["sar_draft"]
+
+
+async def test_failed_resume_returns_to_awaiting_review_for_redelivery(
+    w: World, checkpointer: Any, engine: AsyncEngine
+) -> None:
+    store, proc, _, _, case, alert_id = await _paused_case(w, checkpointer, engine)
+    cid = case["case_id"]
+    await store.record_decision(cid, "approve", "ana", None)
+    async with engine.begin() as c:  # break get_decision's input to force an error
+        await c.execute(text("ALTER TABLE decisions RENAME COLUMN notes TO notes_x"))
+    try:
+        res = await proc.handle(QueueMessage("r2", cid, alert_id, 1, kind="resume"))
+    finally:
+        async with engine.begin() as c:
+            await c.execute(
+                text("ALTER TABLE decisions RENAME COLUMN notes_x TO notes")
+            )
+    assert res == "retry"
+    row = await store.get(cid)
+    assert row and row["status"] == "awaiting_review"
+    res = await proc.handle(QueueMessage("r2", cid, alert_id, 2, kind="resume"))
+    assert res == "completed"
 
 
 async def test_exhausted_retries_mark_the_case_failed_and_post_can_requeue_it(

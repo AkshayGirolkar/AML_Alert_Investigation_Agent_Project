@@ -249,7 +249,7 @@ class Case(Base):
     __tablename__ = "cases"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('queued','running','completed','failed')",
+            "status IN ('queued','running','awaiting_review','completed','failed')",
             name="ck_cases_status",
         ),
         Index("ix_cases_status", "status"),
@@ -267,3 +267,40 @@ class Case(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("now()"))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+# ------------------------------------------------- F08: decisions and audit log
+
+
+class Decision(Base):
+    """The analyst's verdict on an escalated case. UNIQUE case_id = one decision per case."""
+
+    __tablename__ = "decisions"
+    __table_args__ = (
+        CheckConstraint(
+            "decision IN ('approve','reject')", name="ck_decisions_decision"
+        ),
+    )
+
+    decision_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    case_id: Mapped[int] = mapped_column(ForeignKey("cases.case_id"), unique=True)
+    decision: Mapped[str] = mapped_column(Text)
+    analyst_id: Mapped[str] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("now()"))
+
+
+class AuditLog(Base):
+    """Append-only record of who did what to a case (F11 extends the actions)."""
+
+    __tablename__ = "audit_log"
+    __table_args__ = (Index("ix_audit_log_case_id", "case_id"),)
+
+    audit_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    case_id: Mapped[int | None] = mapped_column(
+        ForeignKey("cases.case_id"), nullable=True
+    )
+    actor: Mapped[str] = mapped_column(Text)
+    action: Mapped[str] = mapped_column(Text)
+    detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("now()"))
