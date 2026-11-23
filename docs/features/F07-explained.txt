@@ -1,0 +1,183 @@
+F07 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+F06 gave us an agent that can investigate ONE alert, but only when you run it
+by hand from the command line and wait for it. A real bank has thousands of
+alerts a day. They have to be handled in the background, many at a time, and
+a crash must never lose work or do the same job twice.
+
+F07 turns the agent into a SERVICE: you hand it an alert, it works on it in
+the background, and you come back later to read the result.
+
+
+2. THE PROBLEM F07 SOLVES
+-------------------------
+Running the agent by hand has four problems:
+
+  - It blocks. One investigation takes a while (it calls the AI several
+    times). A web request cannot wait that long.
+  - It is fragile. If the program dies halfway, all progress is lost and you
+    start again, paying for the AI calls again.
+  - It can run twice. Queues deliver messages "at least once", so the same
+    alert can arrive twice. That would double the cost and could produce two
+    different answers for one alert.
+  - Bad alerts can jam things. An alert that always crashes would be retried
+    forever.
+
+
+3. HOW F07 SOLVES IT
+--------------------
+Think of a restaurant. The WAITER (API) takes your order and puts a ticket on
+the rail (queue). The COOK (worker) picks tickets off the rail and cooks. The
+cook writes down each step on a notepad (checkpoints), so a replacement cook
+can carry on from where the first one stopped. The finished dish is recorded
+on an order sheet (the cases table).
+
+  API         Receives "investigate alert 123", writes a case, puts a ticket
+              on the queue, and answers right away with "accepted".
+  Queue       Amazon SQS (a fake local copy called LocalStack during
+              development). Holds the tickets until a worker is free.
+  Worker      Picks a ticket, runs the F06 agent, saves the result.
+  Checkpoints After every step the agent takes, its progress is saved to
+              Postgres. If the worker dies, the next worker resumes from the
+              last saved step instead of starting over.
+  Dead-letter A second queue (DLQ). A ticket that fails three times is moved
+  queue       there so it stops blocking everyone else.
+
+The agent code was also made "async". That means one worker can wait on the
+database or the AI for several alerts at once instead of doing nothing while
+it waits.
+
+
+FILES ADDED UNDER app/
+----------------------
+Think of it as a restaurant: the API is the front of house, the worker is the
+kitchen, and the other files are the equipment.
+
+main.py
+    Starts the web API and wires it to the database and the queue.
+    (Analogy: opening the restaurant.)
+
+api/routes.py
+    The four web addresses:
+      GET  /health                          Is the service alive?
+      POST /alerts/{id}/investigations      Start an investigation.
+      GET  /cases/{id}                      Read a case by its number.
+      GET  /alerts/{id}/case                Read the case for an alert.
+    Posting twice for the same alert still gives one case.
+    (Analogy: the waiter.)
+
+db/cases.py
+    Everything the system does with the cases table: create a case, claim it
+    for a worker, send a "still alive" signal, record the result, record an
+    error. Each step is safe to repeat.
+    (Analogy: the order sheet and the rules for writing on it.)
+
+messaging/sqs.py
+    A thin wrapper around the queue: send a ticket, receive tickets, delete a
+    ticket when done, extend a ticket's time. It also sets up the queue and
+    the dead-letter queue.
+    (Analogy: the ticket rail.)
+
+worker/processor.py
+    Handles one ticket: claim the case, resume from a checkpoint if one
+    exists, run the agent, save the result, delete the ticket. While working
+    it sends a "still alive" signal so nobody else steals the job.
+    (Analogy: the cook's routine for one order.)
+
+worker/main.py and worker/__main__.py
+    The worker's main loop: wait for tickets, run up to four at once, shut
+    down politely when told to stop. Run it with: python -m app.worker
+    (Analogy: the kitchen opening for the day.)
+
+
+FILES CHANGED IN app/
+---------------------
+agent/tools/*, agent/nodes.py, agent/llm.py, agent/graph.py, agent/run.py
+    Converted to async. The database questions and the behavior are the same
+    as in F05 and F06. Only the waiting style changed. The graph can now also
+    accept a checkpoint saver.
+
+synth/embeddings.py
+    Gained an async version of "turn text into numbers" for the media tool.
+
+config.py
+    New settings for the queue, the retry limits and the number of parallel
+    jobs.
+
+db/models.py
+    Added the Case table definition.
+
+
+OTHER FILES ADDED OR CHANGED FOR F07
+------------------------------------
+alembic/versions/0004_create_cases.py  The migration that creates the cases
+                                       table. The checkpoint tables are NOT
+                                       here. The worker creates them itself
+                                       on startup.
+scripts/create_queues.py               Creates the queue and the dead-letter
+                                       queue (safe to run repeatedly).
+Dockerfile                             Builds one image used by the API, the
+                                       worker and the migration job.
+docker-compose.yml                     Added localstack, migrate, api and
+                                       worker next to postgres.
+requirements.txt / requirements.lock   Added FastAPI, uvicorn, aioboto3,
+                                       the Postgres checkpointer and a pool.
+                                       The lock file pins exact versions for
+                                       Docker.
+docs/features/F07-async-execution.md   The spec: scope, decisions and when
+                                       F07 counts as done.
+docs/adr/0002-...md                    Records why we chose these designs and
+                                       what is still missing.
+tests/unit/test_worker_processor.py    Worker logic with fake queue and fake
+                                       database. No infrastructure needed.
+tests/unit/test_api.py                 The four web addresses with a fake
+                                       queue.
+tests/integration/test_worker_resume.py  The key test: crash the agent
+                                       halfway, run again, and check that the
+                                       finished steps did not run twice.
+tests/integration/test_sqs.py          Real send, receive and dead-letter
+                                       behavior against LocalStack.
+tests/*/test_agent_*.py                The F05 and F06 tests, ported to async.
+
+
+SAFETY RULES BUILT IN
+---------------------
+  - One alert, one case. The database refuses a second case for the same
+    alert, so double-posting cannot create two investigations.
+  - Duplicate tickets do nothing. If a ticket arrives for a finished case, it
+    is deleted without redoing the work.
+  - No two workers on one case. A worker must "claim" a case first, and keeps
+    sending a still-alive signal. A running case is only taken over if its
+    worker has been silent for a long time (a crash).
+  - Saving the result is repeatable. Writing the same result twice leaves the
+    same row.
+  - Failures are contained. A ticket that fails three times goes to the
+    dead-letter queue and the case is marked failed. Re-posting it puts it
+    back in the queue.
+  - Secrets stay out of the image. The .env file is never copied into Docker.
+  - Tools stay read-only, so redoing a step after a crash is harmless.
+
+
+WHERE THIS FITS
+---------------
+  F06 agent  ->  F07 queue, worker, checkpoints (done)  ->  F08 analyst
+  approval and resume
+
+F07 makes the agent run reliably in the background. F08 will let a human
+analyst pause and approve the result.
+
+
+KNOWN LIMITATIONS
+-----------------
+  - Database save, then queue send, are two separate steps. If the send fails
+    the case stays "queued" with no ticket. Posting again re-sends it. A
+    proper fix (an "outbox") is left for later.
+  - After a worker crash, the ticket reappears only after the visibility
+    timeout (5 minutes), so recovery is not instant.
+  - Strict "only one worker per case" locking is left for F10 (Redis).
+  - In the manual kill test the worker was stopped before the plan step
+    finished, so the plan re-ran. The automated crash test shows later steps
+    are not repeated.
