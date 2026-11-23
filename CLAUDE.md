@@ -7,7 +7,7 @@ Project overview and architecture:
 
 ## Status
 
-In progress. F00–F03 have been started or built (app code, Alembic migrations, ingestion, synthetic data in `app/synth/`). The repo is under git (feature branches, PRs into `main`). Use the single local venv `.venv/` (Python 3.12, gitignored); don't create other venvs.
+In progress. F00–F07 have been started or built (app code, Alembic migrations, ingestion, synthetic data in `app/synth/`). The repo is under git (feature branches, PRs into `main`). Use the single local venv `.venv/` (Python 3.12, gitignored); don't create other venvs.
 
 Full design (data sources, architecture, LangGraph graph, feature breakdown F00–F18, eval plan, build order):
 
@@ -46,6 +46,8 @@ pytest tests/path/test_x.py::test_name   # single test; `live` marker (real Open
 ruff check . && mypy .
 ```
 
-Not built yet: FastAPI app and `/health` (no `app/main.py`), redis/localstack/api/worker in `docker-compose.yml`, Dockerfile, GitHub Actions CI, `pyproject.toml`.
+F07 (async): `docker compose up -d --build` runs postgres, localstack (SQS), migrate, api (:8000) and worker; `python -m app.worker` runs the worker locally, `uvicorn app.main:app` the API. Everything in `app/agent` is async now. SQS integration tests need LocalStack (`docker compose up -d localstack`) and are skipped otherwise. `requirements.lock` (uv compile) is what the Dockerfile installs: regenerate it when `requirements.txt` changes.
+
+Not built yet: redis in `docker-compose.yml`, GitHub Actions CI, `pyproject.toml`.
 
 Required env in `.env` (never commit): `OPENAI_API_KEY`, `LANGSMITH_API_KEY`, `LANGSMITH_TRACING=true`, optional `ANTHROPIC_API_KEY`. Kaggle download needs `~/.kaggle/kaggle.json`.

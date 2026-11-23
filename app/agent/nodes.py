@@ -59,9 +59,12 @@ class Nodes:
         self._assess_llm = assess_llm
         self._settings = settings
 
-    def load_alert(self, state: InvestigationState) -> InvestigationState:
-        with self._conn_factory() as conn, conn.cursor(row_factory=dict_row) as cur:
-            row = cur.execute(ALERT_SQL, (state["alert_id"],)).fetchone()
+    async def load_alert(self, state: InvestigationState) -> InvestigationState:
+        async with (
+            self._conn_factory() as conn,
+            conn.cursor(row_factory=dict_row) as cur,
+        ):
+            row = await (await cur.execute(ALERT_SQL, (state["alert_id"],))).fetchone()
         if row is None:
             raise LookupError(f"alert {state['alert_id']} not found")
         alert = jsonable(row)
@@ -75,17 +78,22 @@ class Nodes:
             "grounding_errors": [],
         }
 
-    def load_kyc(self, state: InvestigationState) -> InvestigationState:
-        with self._conn_factory() as conn, conn.cursor(row_factory=dict_row) as cur:
-            row = cur.execute(KYC_SQL, (state["alert"]["account_id"],)).fetchone()
+    async def load_kyc(self, state: InvestigationState) -> InvestigationState:
+        async with (
+            self._conn_factory() as conn,
+            conn.cursor(row_factory=dict_row) as cur,
+        ):
+            row = await (
+                await cur.execute(KYC_SQL, (state["alert"]["account_id"],))
+            ).fetchone()
         return {"kyc": jsonable(row) if row else None}
 
-    def plan(self, state: InvestigationState) -> InvestigationState:
+    async def plan(self, state: InvestigationState) -> InvestigationState:
         tools = "\n".join(
             f"- {t.name}: {t.description} args={json.dumps(t.args)}"
             for t in self._tools.values()
         )
-        plan = self._plan_llm.structured(
+        plan = await self._plan_llm.structured(
             InvestigationPlan,
             [
                 (
@@ -99,7 +107,7 @@ class Nodes:
         )
         return {"plan": [c.model_dump() for c in plan.checks]}
 
-    def tool_loop(self, state: InvestigationState) -> InvestigationState:
+    async def tool_loop(self, state: InvestigationState) -> InvestigationState:
         """Run planned checks. The cap is enforced here, whatever the plan says."""
         account_id = state["alert"]["account_id"]
         evidence = list(state.get("evidence", []))
@@ -116,7 +124,9 @@ class Nodes:
                 continue
             args = {"account_id": account_id, **check.get("args", {})}
             calls += 1
-            record = Evidence.model_validate(tool.invoke(args)).model_dump(mode="json")
+            record = Evidence.model_validate(await tool.ainvoke(args)).model_dump(
+                mode="json"
+            )
             if record["evidence_id"] is not None:
                 if record["evidence_id"] in seen:
                     continue
@@ -124,8 +134,8 @@ class Nodes:
             evidence.append(record)
         return {"evidence": evidence, "tool_calls": calls, "skipped_checks": skipped}
 
-    def assess(self, state: InvestigationState) -> InvestigationState:
-        verdict = self._assess_llm.structured(
+    async def assess(self, state: InvestigationState) -> InvestigationState:
+        verdict = await self._assess_llm.structured(
             Verdict,
             [
                 ("system", prompts.ASSESS_SYSTEM),
@@ -142,7 +152,7 @@ class Nodes:
         )
         return {"verdict": verdict.model_dump()}
 
-    def validate_grounding(self, state: InvestigationState) -> InvestigationState:
+    async def validate_grounding(self, state: InvestigationState) -> InvestigationState:
         verdict = Verdict.model_validate(state["verdict"])
         problems = check_grounding(verdict, state.get("evidence", []))
         retries = state.get("grounding_retries", 0) + (1 if problems else 0)
@@ -152,10 +162,10 @@ class Nodes:
             "grounding_retries": retries,
         }
 
-    def close_case(self, state: InvestigationState) -> InvestigationState:
+    async def close_case(self, state: InvestigationState) -> InvestigationState:
         return {"outcome": "closed", "sar_draft": None}
 
-    def draft_sar(self, state: InvestigationState) -> InvestigationState:
+    async def draft_sar(self, state: InvestigationState) -> InvestigationState:
         evidence = state.get("evidence", [])
         known = {e["evidence_id"] for e in evidence if e["evidence_id"]}
         verdict = state.get("verdict") or {}
@@ -172,7 +182,7 @@ class Nodes:
         # If the model itself judged the alert benign (policy forced the escalation),
         # do not ask it to write a suspicious-activity narrative; state the reason.
         if state.get("grounded") and verdict.get("disposition") == "escalate":
-            draft = self._assess_llm.structured(
+            draft = await self._assess_llm.structured(
                 SarDraft,
                 [
                     ("system", prompts.SAR_SYSTEM),

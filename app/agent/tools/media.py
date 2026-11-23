@@ -13,18 +13,20 @@ TOOL = "adverse_media"
 SNIPPET_CHARS = 300
 
 
-def adverse_media(
-    conn: psycopg.Connection, embedder: Embedder | None = None, **params: Any
+async def adverse_media(
+    conn: psycopg.AsyncConnection, embedder: Embedder | None = None, **params: Any
 ) -> Evidence:
-    return run_tool(TOOL, AdverseMediaArgs, params, lambda a: _run(conn, embedder, a))
+    return await run_tool(
+        TOOL, AdverseMediaArgs, params, lambda a: _run(conn, embedder, a)
+    )
 
 
 def _vector_literal(vec: list[float]) -> str:
     return "[" + ",".join(repr(float(v)) for v in vec) + "]"
 
 
-def _run(
-    conn: psycopg.Connection, embedder: Embedder | None, a: AdverseMediaArgs
+async def _run(
+    conn: psycopg.AsyncConnection, embedder: Embedder | None, a: AdverseMediaArgs
 ) -> Evidence:
     args = a.model_dump(mode="json")
     if a.query is not None and embedder is None:
@@ -34,8 +36,8 @@ def _run(
             "error",
             "Semantic search is unavailable; call again without `query`.",
         )
-    with cursor(conn) as cur:
-        who = entity_of(cur, a.account_id)
+    async with cursor(conn) as cur:
+        who = await entity_of(cur, a.account_id)
         if who is None:
             return build_evidence(
                 TOOL,
@@ -45,10 +47,10 @@ def _run(
                 {"account_exists": False},
             )
         eid = who["entity_id"]
-        cur.execute(
+        await cur.execute(
             "SELECT count(*) AS n FROM adverse_media WHERE entity_id = %s", (eid,)
         )
-        row = cur.fetchone()
+        row = await cur.fetchone()
         assert row is not None
         total = row["n"]
         if total == 0:
@@ -62,24 +64,24 @@ def _run(
 
         cols = "media_id, headline, left(body, %(chars)s) AS snippet, published_at"  # deliberately excludes is_decoy and theme (ground truth)
         if a.query is None:
-            cur.execute(
+            await cur.execute(
                 f"SELECT {cols} FROM adverse_media WHERE entity_id = %(e)s "
                 "ORDER BY published_at DESC, media_id LIMIT %(n)s",
                 {"e": eid, "n": a.limit, "chars": SNIPPET_CHARS},
             )
             order = "newest first"
-            rows = cur.fetchall()
+            rows = await cur.fetchall()
         else:
             assert embedder is not None
-            vec = _vector_literal(embedder.embed([a.query])[0])
-            cur.execute(
+            vec = _vector_literal((await embedder.aembed([a.query]))[0])
+            await cur.execute(
                 f"SELECT {cols}, 1 - (embedding <=> %(v)s::vector) AS similarity "
                 "FROM adverse_media WHERE entity_id = %(e)s "
                 "ORDER BY embedding <=> %(v)s::vector, media_id LIMIT %(n)s",
                 {"e": eid, "n": a.limit, "v": vec, "chars": SNIPPET_CHARS},
             )
             order = "most similar to query first"
-            rows = cur.fetchall()
+            rows = await cur.fetchall()
 
     articles = []
     for r in rows:

@@ -5,8 +5,8 @@ returns `Evidence.model_dump(mode="json")`. Argument validation happens inside t
 (see `run_tool`), so bad input comes back as an error record instead of raising.
 """
 
-from collections.abc import Callable
-from contextlib import AbstractContextManager
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any
 
 import psycopg
@@ -28,16 +28,18 @@ from app.agent.tools.transactions import query_transactions
 from app.db.copy import conninfo
 from app.synth.embeddings import Embedder
 
-ConnFactory = Callable[[], AbstractContextManager[psycopg.Connection]]
+ConnFactory = Callable[[], AbstractAsyncContextManager[psycopg.AsyncConnection]]
 
 
 def make_conn_factory(database_url: str) -> ConnFactory:
     """New read-only connection per call (the tools never write)."""
 
-    def factory() -> AbstractContextManager[psycopg.Connection]:
-        return psycopg.connect(
+    @asynccontextmanager
+    async def factory() -> AsyncIterator[psycopg.AsyncConnection]:
+        async with await psycopg.AsyncConnection.connect(
             conninfo(database_url), options="-c default_transaction_read_only=on"
-        )
+        ) as conn:
+            yield conn
 
     return factory
 
@@ -47,17 +49,17 @@ def _tool(
     description: str,
     schema: type[BaseModel],
     conn_factory: ConnFactory,
-    call: Callable[..., Any],
+    call: Callable[..., Awaitable[Any]],
 ) -> StructuredTool:
-    def run(**kwargs: Any) -> dict[str, Any]:
-        with conn_factory() as conn:
-            result = call(conn, **kwargs)
+    async def run(**kwargs: Any) -> dict[str, Any]:
+        async with conn_factory() as conn:
+            result = await call(conn, **kwargs)
         return result.model_dump(mode="json")  # type: ignore[no-any-return]
 
     # A JSON schema (not the pydantic class) so LangChain does not validate first;
     # our own validation returns errors as data.
     return StructuredTool.from_function(
-        func=run,
+        coroutine=run,
         name=name,
         description=description,
         args_schema=schema.model_json_schema(),
