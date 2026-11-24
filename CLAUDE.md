@@ -7,7 +7,7 @@ Project overview and architecture:
 
 ## Status
 
-In progress. F00–F07 have been started or built (app code, Alembic migrations, ingestion, synthetic data in `app/synth/`). The repo is under git (feature branches, PRs into `main`). Use the single local venv `.venv/` (Python 3.12, gitignored); don't create other venvs.
+In progress. F00–F08 have been started or built (app code, Alembic migrations, ingestion, synthetic data in `app/synth/`). The repo is under git (feature branches, PRs into `main`). Use the single local venv `.venv/` (Python 3.12, gitignored); don't create other venvs.
 
 Full design (data sources, architecture, LangGraph graph, feature breakdown F00–F18, eval plan, build order):
 
@@ -47,6 +47,8 @@ ruff check . && mypy .
 ```
 
 F07 (async): `docker compose up -d --build` runs postgres, localstack (SQS), migrate, api (:8000) and worker; `python -m app.worker` runs the worker locally, `uvicorn app.main:app` the API. Everything in `app/agent` is async now. SQS integration tests need LocalStack (`docker compose up -d localstack`) and are skipped otherwise. `requirements.lock` (uv compile) is what the Dockerfile installs: regenerate it when `requirements.txt` changes.
+
+F08 (human review): escalated cases pause at `human_review` (`interrupt()`), status `awaiting_review`; `POST /cases/{id}/decision` records the decision (`decisions`, `audit_log`) and sends a `resume` SQS message that the worker turns into `Command(resume=...)`. `python -m app.agent.run --alert-id N --decision approve` demos it with an in-memory checkpointer. No auth yet (F11), so `analyst_id` is in the request body.
 
 Not built yet: redis in `docker-compose.yml`, GitHub Actions CI, `pyproject.toml`.
 

@@ -325,3 +325,64 @@ async def test_policy_forced_escalation_does_not_ask_llm_for_a_sar() -> None:
     assert "never auto-closed" in str(out["escalation_reason"])
     narrative = (out["sar_draft"] or {})["narrative"]
     assert "low risk" in narrative and "ordinary activity" in narrative
+
+
+# ---- F08: human_review interrupt
+
+
+def _review_graph() -> Any:
+    from langgraph.checkpoint.memory import MemorySaver
+    from langgraph.graph import END, START, StateGraph
+
+    from app.agent.state import InvestigationState
+
+    g = StateGraph(InvestigationState)
+    g.add_node("human_review", _nodes([]).human_review)
+    g.add_edge(START, "human_review")
+    g.add_edge("human_review", END)
+    return g.compile(checkpointer=MemorySaver())
+
+
+_ESCALATED: Any = {
+    "alert_id": 3,
+    "verdict": {"disposition": "escalate"},
+    "sar_draft": {"narrative": "n", "evidence_ids": ["t:1"]},
+    "escalation_reason": "risk",
+    "outcome": "escalated",
+}
+
+
+async def test_human_review_pauses_with_the_review_payload() -> None:
+    graph, cfg = _review_graph(), {"configurable": {"thread_id": "t"}}
+    state = await graph.ainvoke(_ESCALATED, cfg)
+    (intr,) = state["__interrupt__"]
+    assert intr.value["alert_id"] == 3 and intr.value["sar_draft"]["narrative"] == "n"
+    assert "decision" not in state  # nothing decided yet
+    assert (await graph.aget_state(cfg)).next == ("human_review",)
+
+
+@pytest.mark.parametrize(
+    ("decision", "outcome"), [("approve", "escalated"), ("reject", "closed")]
+)
+async def test_human_review_resume_sets_decision_and_outcome(
+    decision: str, outcome: str
+) -> None:
+    from langgraph.types import Command
+
+    graph, cfg = _review_graph(), {"configurable": {"thread_id": "t"}}
+    await graph.ainvoke(_ESCALATED, cfg)
+    resume = {"decision": decision, "analyst_id": "ana", "notes": "n"}
+    state = await graph.ainvoke(Command(resume=resume), cfg)
+    assert "__interrupt__" not in state
+    assert state["decision"] == decision and state["outcome"] == outcome
+    assert state["analyst_id"] == "ana" and state["analyst_notes"] == "n"
+
+
+async def test_human_review_rejects_an_unknown_decision() -> None:
+    from langgraph.types import Command
+
+    graph, cfg = _review_graph(), {"configurable": {"thread_id": "t"}}
+    await graph.ainvoke(_ESCALATED, cfg)
+    bad: Command[Any] = Command(resume={"decision": "maybe", "analyst_id": "a"})
+    with pytest.raises(ValueError, match="unknown decision"):
+        await graph.ainvoke(bad, cfg)

@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Any
 
 from langchain_core.tools import StructuredTool
+from langgraph.types import interrupt
 from psycopg.rows import dict_row
 
 from app.agent import prompts
@@ -202,6 +203,29 @@ class Nodes:
             "outcome": "escalated",
             "escalation_reason": reason,
             "sar_draft": draft.model_dump(),
+        }
+
+    async def human_review(self, state: InvestigationState) -> InvestigationState:
+        """Pause for the analyst (F08). Nothing before `interrupt()` may have side effects:
+        on resume this node runs again from the top and `interrupt` returns the decision.
+        """
+        resume = interrupt(
+            {
+                "alert_id": state["alert_id"],
+                "verdict": state.get("verdict"),
+                "sar_draft": state.get("sar_draft"),
+                "escalation_reason": state.get("escalation_reason"),
+            }
+        )
+        decision = resume["decision"]
+        if decision not in ("approve", "reject"):
+            raise ValueError(f"unknown decision {decision!r}")
+        return {
+            "decision": decision,
+            "analyst_id": resume["analyst_id"],
+            "analyst_notes": resume.get("notes"),
+            # approve files the SAR; reject overrides the escalation
+            "outcome": "escalated" if decision == "approve" else "closed",
         }
 
 

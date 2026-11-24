@@ -3,7 +3,10 @@
 load_alert -> load_kyc -> plan -> tool_loop -> assess -> validate_grounding
     -> grounded & benign & confident: close_case
     -> not grounded, first failure:   assess (retry once)
-    -> otherwise:                     draft_sar
+    -> otherwise:                     draft_sar -> human_review (interrupt, F08) -> END
+
+`human_review` needs a checkpointer: the graph stops there until it is resumed with
+`Command(resume={"decision", "analyst_id", "notes"})`.
 """
 
 from typing import Any, Literal
@@ -64,6 +67,7 @@ def build_graph(
     g.add_node("validate_grounding", nodes.validate_grounding)
     g.add_node("close_case", nodes.close_case)
     g.add_node("draft_sar", nodes.draft_sar)
+    g.add_node("human_review", nodes.human_review)
 
     g.add_edge(START, "load_alert")
     g.add_edge("load_alert", "load_kyc")
@@ -73,5 +77,6 @@ def build_graph(
     g.add_edge("assess", "validate_grounding")
     g.add_conditional_edges("validate_grounding", after_validation)
     g.add_edge("close_case", END)
-    g.add_edge("draft_sar", END)
+    g.add_edge("draft_sar", "human_review")
+    g.add_edge("human_review", END)
     return g.compile(checkpointer=checkpointer)

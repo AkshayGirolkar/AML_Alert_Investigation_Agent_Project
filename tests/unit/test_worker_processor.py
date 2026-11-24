@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from app.messaging.sqs import QueueMessage
-from app.worker.processor import Processor, run_graph
+from app.worker.processor import Processor, resume_graph, run_graph
 
 
 class FakeStore:
@@ -18,6 +18,9 @@ class FakeStore:
         }
         self.completed: list[dict[str, Any]] = []
         self.errors: list[tuple[str, bool]] = []
+        self.paused: list[dict[str, Any]] = []
+        self.retry_statuses: list[str] = []
+        self.decision: dict[str, Any] | None = None
 
     async def claim(self, case_id: int, stale_after: int) -> dict[str, Any] | None:
         if self.case and self.case["status"] == "queued":
@@ -33,8 +36,27 @@ class FakeStore:
         assert self.case is not None
         self.case["status"] = "completed"
 
-    async def record_error(self, case_id: int, error: str, failed: bool) -> None:
+    async def record_error(
+        self, case_id: int, error: str, failed: bool, retry_status: str = "queued"
+    ) -> None:
         self.errors.append((error, failed))
+        self.retry_statuses.append(retry_status)
+
+    async def mark_awaiting_review(self, case_id: int, state: dict[str, Any]) -> None:
+        self.paused.append(state)
+        assert self.case is not None
+        self.case["status"] = "awaiting_review"
+
+    async def claim_resume(
+        self, case_id: int, stale_after: int
+    ) -> dict[str, Any] | None:
+        if self.case and self.case["status"] == "awaiting_review" and self.decision:
+            self.case["status"] = "running"
+            return self.case
+        return None
+
+    async def get_decision(self, case_id: int) -> dict[str, Any] | None:
+        return self.decision
 
 
 class FakeQueue:
@@ -56,7 +78,7 @@ class FakeGraph:
         result: dict[str, Any] | None = None,
         error: Exception | None = None,
     ) -> None:
-        self.snapshot = snapshot or SimpleNamespace(next=(), values={})
+        self.snapshot = snapshot or SimpleNamespace(next=(), values={}, tasks=())
         self.result = result or {
             "outcome": "closed",
             "verdict": {"disposition": "close"},
@@ -136,3 +158,70 @@ async def test_failure_on_last_receive_marks_case_failed() -> None:
     store, queue = FakeStore(), FakeQueue()
     assert await _proc(graph, store, queue).handle(_msg(receive_count=3)) == "failed"
     assert store.errors[0][1] is True and queue.deleted == []
+
+
+# ---- F08: pause for analyst review, resume with the decision
+
+PAUSED = {"verdict": {"disposition": "escalate"}, "__interrupt__": [object()]}
+DECISION = {"decision": "approve", "analyst_id": "ana", "notes": "ok"}
+
+
+def _waiting_snapshot() -> SimpleNamespace:
+    task = SimpleNamespace(interrupts=[object()])
+    return SimpleNamespace(next=("human_review",), values={"alert_id": 9}, tasks=[task])
+
+
+async def test_graph_paused_at_review_marks_awaiting_review_and_acks() -> None:
+    graph, store, queue = FakeGraph(result=PAUSED), FakeStore(), FakeQueue()
+    assert await _proc(graph, store, queue).handle(_msg()) == "awaiting_review"
+    assert store.paused and store.completed == []  # not completed before a decision
+    assert store.case and store.case["status"] == "awaiting_review"
+    assert queue.deleted == ["rh"]
+
+
+async def test_thread_waiting_for_analyst_is_not_resumed_as_a_crash() -> None:
+    graph = FakeGraph(snapshot=_waiting_snapshot())
+    state = await run_graph(graph, 9)
+    assert graph.invocations == [] and state["__interrupt__"]  # no ainvoke(None)
+
+
+async def test_resume_message_continues_graph_with_the_stored_decision() -> None:
+    graph = FakeGraph(
+        snapshot=_waiting_snapshot(),
+        result={"outcome": "escalated", "decision": "approve"},
+    )
+    store, queue = FakeStore("awaiting_review"), FakeQueue()
+    store.decision = {**DECISION}
+    msg = QueueMessage("rh", 1, 9, 1, kind="resume")
+    assert await _proc(graph, store, queue).handle(msg) == "completed"
+    command, thread = graph.invocations[0]
+    assert command.resume == DECISION and thread == "alert-9"
+    assert store.completed[0]["outcome"] == "escalated" and queue.deleted == ["rh"]
+
+
+async def test_resume_message_without_a_claimable_case_is_acked() -> None:
+    graph, store, queue = FakeGraph(), FakeStore("awaiting_review"), FakeQueue()
+    msg = QueueMessage("rh", 1, 9, 1, kind="resume")  # no decision on file yet
+    assert await _proc(graph, store, queue).handle(msg) == "skipped"
+    assert graph.invocations == [] and queue.deleted == ["rh"]
+
+
+async def test_failed_resume_goes_back_to_awaiting_review() -> None:
+    graph = FakeGraph(snapshot=_waiting_snapshot(), error=RuntimeError("boom"))
+    store, queue = FakeStore("awaiting_review"), FakeQueue()
+    store.decision = {**DECISION}
+    msg = QueueMessage("rh", 1, 9, 1, kind="resume")
+    assert await _proc(graph, store, queue).handle(msg) == "retry"
+    assert store.retry_statuses == ["awaiting_review"] and queue.deleted == []
+
+
+async def test_resume_after_the_graph_already_finished_reuses_final_state() -> None:
+    final = {"outcome": "closed", "alert_id": 9}
+    graph = FakeGraph(snapshot=SimpleNamespace(next=(), values=final, tasks=()))
+    assert await resume_graph(graph, 9, DECISION) == final
+    assert graph.invocations == []
+
+
+async def test_resume_without_any_checkpoint_is_an_error() -> None:
+    with pytest.raises(RuntimeError, match="no checkpoint"):
+        await resume_graph(FakeGraph(), 9, DECISION)

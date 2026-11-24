@@ -22,10 +22,15 @@ class QueueMessage:
     case_id: int
     alert_id: int
     receive_count: int
+    kind: str = (
+        "investigate"  # or "resume" (F08: an analyst decided, continue the graph)
+    )
 
 
 class InvestigationQueue(Protocol):
-    async def send(self, case_id: int, alert_id: int) -> None: ...
+    async def send(
+        self, case_id: int, alert_id: int, kind: str = "investigate"
+    ) -> None: ...
 
     async def receive(
         self, max_messages: int = 1, wait_seconds: int = 20
@@ -84,10 +89,14 @@ class SqsQueue:
         self._sqs = client
         self.queue_url = queue_url
 
-    async def send(self, case_id: int, alert_id: int) -> None:
+    async def send(
+        self, case_id: int, alert_id: int, kind: str = "investigate"
+    ) -> None:
         await self._sqs.send_message(
             QueueUrl=self.queue_url,
-            MessageBody=json.dumps({"case_id": case_id, "alert_id": alert_id}),
+            MessageBody=json.dumps(
+                {"case_id": case_id, "alert_id": alert_id, "type": kind}
+            ),
         )
 
     async def receive(
@@ -103,6 +112,9 @@ class SqsQueue:
         for m in resp.get("Messages", []):
             try:
                 body = json.loads(m["Body"])
+                kind = body.get("type", "investigate")  # absent in pre-F08 messages
+                if kind not in ("investigate", "resume"):
+                    raise ValueError(kind)
                 out.append(
                     QueueMessage(
                         receipt_handle=m["ReceiptHandle"],
@@ -111,6 +123,7 @@ class SqsQueue:
                         receive_count=int(
                             m.get("Attributes", {}).get("ApproximateReceiveCount", 1)
                         ),
+                        kind=kind,
                     )
                 )
             except (ValueError, KeyError, TypeError):
