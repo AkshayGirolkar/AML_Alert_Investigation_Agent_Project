@@ -1,0 +1,207 @@
+F08 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+F07 turned the agent into a background service. It investigates an alert,
+decides "close it" or "escalate it", and for an escalation it writes a draft
+Suspicious Activity Report (SAR). But F07 then simply stamped the case
+"completed". The agent had the last word.
+
+In a real bank that is not allowed. A suspicious activity report goes to a
+regulator, so a HUMAN analyst must look at the evidence and approve it first.
+The project plan says it directly: a human analyst approves escalations.
+
+F08 adds that human step. The agent stops, waits for the analyst, and carries
+on only after the analyst has decided.
+
+
+2. THE PROBLEM F08 SOLVES
+-------------------------
+Waiting for a human is awkward for a program:
+
+  - It can take hours or days. A worker cannot sit and hold the case that
+    long, and a web request cannot wait for it at all.
+  - The program may restart while it waits. The paused investigation must
+    survive that, and must not be redone (that would cost AI calls again).
+  - The analyst might click twice, or two analysts might disagree. Only one
+    decision may count.
+  - The decision has to be recorded: who decided, what, and why. An auditor
+    will ask.
+
+
+3. HOW F08 SOLVES IT
+--------------------
+Think of the restaurant again. The cook has finished a special dish that
+needs the head chef's sign-off before it goes out. The cook does NOT stand
+there holding the plate. The cook puts the plate on the "pass" with a note
+on it, and moves on to the next order. When the head chef signs, a new ticket
+goes on the rail saying "plate 7 approved", and a cook finishes it.
+
+  Pause       After the draft SAR is written, the graph reaches a new step
+              called "human_review". It calls interrupt(), which saves
+              everything so far into the checkpoint and stops. The worker
+              marks the case "awaiting_review", deletes its ticket, and is
+              free to take other work.
+  Decide      The analyst calls POST /cases/{id}/decision with "approve" or
+              "reject", their name and optional notes. The API stores the
+              decision in the database and puts a "resume" ticket on the
+              queue.
+  Resume      A worker picks up the resume ticket, loads the saved
+              checkpoint and continues the graph with the analyst's answer.
+              The agent's earlier work is NOT repeated.
+  Result      Approve means the escalation stands (outcome "escalated").
+              Reject means the analyst overrode it (outcome "closed"). The
+              case becomes "completed".
+
+Case status now goes:
+
+  queued -> running -> awaiting_review -> running -> completed
+                            (agent paused)      (analyst decided)
+
+Alerts the agent closes by itself never pause. They behave exactly as in F07.
+
+
+FILES ADDED UNDER app/ AND alembic/
+-----------------------------------
+api/schemas.py
+    The shape of the decision request: decision (approve or reject),
+    analyst_id (who) and notes. Anything else is refused with a 422 error.
+    (Analogy: the form the head chef has to fill in.)
+
+alembic/versions/0005_create_decisions_audit_log.py
+    The database migration. It allows the new "awaiting_review" status and
+    creates two tables:
+      decisions   one row per case: what was decided, by whom, when.
+                  The database refuses a second row for the same case.
+      audit_log   a growing history of "who did what to which case".
+    (Analogy: the signed approval slip and the kitchen logbook.)
+
+
+FILES CHANGED IN app/
+---------------------
+agent/nodes.py
+    New step human_review. It calls interrupt() with the verdict and the
+    draft SAR, and when resumed turns the analyst's answer into the final
+    outcome.
+
+agent/graph.py
+    Draft SAR now leads to human_review instead of straight to the end.
+
+agent/state.py
+    Three new fields to remember the decision: decision, analyst_id and
+    analyst_notes.
+
+agent/run.py
+    The command-line tool now keeps progress in memory. It shows that the
+    case is paused, and --decision approve|reject lets you answer in the same
+    run, which is handy for demos.
+
+worker/processor.py
+    Learned two new things:
+      - A graph that stopped at the review is "waiting", not "crashed". The
+        worker must not restart it. It marks the case awaiting_review.
+      - A "resume" ticket: read the stored decision, continue the graph, save
+        the result.
+
+db/cases.py
+    New operations: mark a case awaiting_review, record a decision (with its
+    audit row), read a decision, and claim a case for resuming. Saving the
+    final result now only works on a case that is "running", so an old
+    duplicate ticket can never overwrite a finished case.
+
+messaging/sqs.py
+    Tickets now have a type: "investigate" (as before) or "resume". Old
+    tickets without a type are treated as "investigate".
+
+api/routes.py
+    New address:  POST /cases/{id}/decision
+    GET /cases/{id} now also shows the decision, if there is one.
+
+db/models.py
+    Table definitions for decisions and audit_log, and the new status.
+
+
+OTHER FILES ADDED OR CHANGED FOR F08
+------------------------------------
+docs/features/F08-human-in-the-loop.md   The spec: scope, rules and when F08
+                                         counts as done.
+CLAUDE.md                                Notes on the review flow and the
+                                         status line.
+tests/unit/test_agent_graph.py           The pause and the approve, reject and
+                                         bad-decision cases for human_review.
+tests/unit/test_worker_processor.py      Paused vs crashed, the resume ticket,
+                                         failed resume.
+tests/unit/test_api.py                   The decision address: 202, 200, 404,
+                                         409 and 422.
+tests/integration/test_worker_resume.py  The real database: pause, approve and
+                                         reject both finish correctly, repeats
+                                         do nothing, a restarted worker leaves
+                                         a paused case paused.
+tests/integration/test_sqs.py            A resume ticket survives the real
+                                         queue.
+
+
+A WORKED EXAMPLE
+----------------
+  1. Someone posts "investigate alert 50836". The agent decides it is
+     suspicious, writes a draft SAR and pauses. Case 7 shows
+     "awaiting_review".
+  2. An analyst reads the case and posts:
+       POST /cases/7/decision
+       {"decision": "approve", "analyst_id": "ana", "notes": "confirmed"}
+     The reply is 202 (accepted). A "resume" ticket is queued.
+  3. A worker resumes the saved graph. Case 7 becomes "completed" with
+     outcome "escalated". The decisions table has one row, and audit_log
+     has "ana / decision_approve".
+  4. Posting the same decision again gives 200 and changes nothing. Posting
+     "reject" instead gives 409, because a decision is already on file.
+  5. Posting a decision for a case number that does not exist gives 404.
+     Posting one for a case that is not waiting (still queued, say) gives 409.
+
+This exact path was run against the real stack (Docker, LocalStack, OpenAI).
+
+
+SAFETY RULES BUILT IN
+---------------------
+  - One decision per case. The database refuses a second row, and the case
+    row is locked while the decision is written, so two analysts clicking at
+    once cannot both win.
+  - Repeating is harmless. The same decision again returns 200. A duplicate
+    resume ticket is acknowledged and ignored.
+  - Nothing is lost if the send fails. If the decision is saved but the
+    resume ticket fails to send, posting the same decision again sends it.
+  - A paused case stays paused. A restarted worker, or a duplicate old
+    ticket, will not wake it up or redo the investigation.
+  - A failed resume can be retried. The case goes back to "awaiting_review"
+    so the queue can deliver the ticket again.
+  - A finished case cannot be overwritten. Saving a result only works on a
+    running case.
+  - Every decision leaves an audit row with who made it.
+
+
+WHERE THIS FITS
+---------------
+  F07 queue, worker, checkpoints  ->  F08 analyst approval and resume (done)
+  ->  F09 long-term memory
+
+F08 gives the analyst the final word. F09 will remember each outcome, so the
+next alert on the same customer can use it ("cleared before for payroll").
+
+
+KNOWN LIMITATIONS
+-----------------
+  - No login yet. The caller types their own analyst_id. Real sign-in and
+    analyst/supervisor roles come in F11, so for now the name is not proven.
+  - Only escalations pause. A case the agent closes with a "high risk" score
+    is not reviewed by a human. The project plan mentions this, and it is
+    left for later.
+  - Only approve and reject exist. There is no "ask for more information"
+    option that sends the case back to the agent.
+  - There is no screen for analysts yet (F14). For now the decision is posted
+    with an API call.
+  - The decision is saved, then the resume ticket is sent, as two separate
+    steps. If the send fails, the analyst has to post again (safe to do).
+  - The agent's memory of the outcome (write_memory) is not built until F09.
+  - The command-line tool keeps progress only in memory, so a paused run
+    cannot be answered later. Use the API for that.
