@@ -6,12 +6,14 @@ from decimal import Decimal
 from typing import Any
 
 from langchain_core.tools import StructuredTool
+from langgraph.store.base import BaseStore
 from langgraph.types import interrupt
 from psycopg.rows import dict_row
 
 from app.agent import prompts
 from app.agent.evidence import Evidence
 from app.agent.llm import LLM
+from app.agent.memory import CustomerMemory, has_prior_approved_sar
 from app.agent.routing import alert_context, check_grounding, escalation_reason
 from app.agent.schemas import InvestigationPlan, SarDraft, Verdict
 from app.agent.state import InvestigationState
@@ -53,7 +55,9 @@ class Nodes:
         plan_llm: LLM,
         assess_llm: LLM,
         settings: Settings,
+        store: BaseStore | None = None,
     ) -> None:
+        self._memory = CustomerMemory(store) if store is not None else None
         self._conn_factory = conn_factory
         self._tools = {t.name: t for t in tools}
         self._plan_llm = plan_llm
@@ -89,6 +93,25 @@ class Nodes:
             ).fetchone()
         return {"kyc": jsonable(row) if row else None}
 
+    async def recall_history(self, state: InvestigationState) -> InvestigationState:
+        """Prior cases on this customer (F09). Empty without a store or on store errors."""
+        if self._memory is None:
+            return {"history": []}
+        history = await self._memory.recall(state, self._settings.memory_history_limit)
+        return {"history": history}
+
+    def prior_sar(self, state: InvestigationState) -> bool:
+        """Policy input for routing: auto-close is blocked after an approved SAR."""
+        return self._settings.memory_block_auto_close_on_prior_sar and (
+            has_prior_approved_sar(state.get("history", []))
+        )
+
+    async def write_memory(self, state: InvestigationState) -> InvestigationState:
+        """Record this case's outcome for the customer (F09). Idempotent per alert."""
+        if self._memory is not None:
+            await self._memory.record(state)
+        return {}
+
     async def plan(self, state: InvestigationState) -> InvestigationState:
         tools = "\n".join(
             f"- {t.name}: {t.description} args={json.dumps(t.args)}"
@@ -103,7 +126,12 @@ class Nodes:
                         max_calls=self._settings.max_tool_calls, tools=tools
                     ),
                 ),
-                ("user", prompts.plan_user(state["alert"], state.get("kyc"))),
+                (
+                    "user",
+                    prompts.plan_user(
+                        state["alert"], state.get("kyc"), state.get("history")
+                    ),
+                ),
             ],
         )
         return {"plan": [c.model_dump() for c in plan.checks]}
@@ -147,6 +175,7 @@ class Nodes:
                         state.get("kyc"),
                         state.get("evidence", []),
                         state.get("grounding_errors", []),
+                        state.get("history"),
                     ),
                 ),
             ],
@@ -178,6 +207,7 @@ class Nodes:
             cfg.close_confidence_min,
             state["alert"]["rule_id"],
             cfg.no_auto_close_rule_set,
+            self.prior_sar(state),
         )
         draft: SarDraft | None = None
         # If the model itself judged the alert benign (policy forced the escalation),

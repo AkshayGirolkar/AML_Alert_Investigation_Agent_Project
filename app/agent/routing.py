@@ -27,6 +27,7 @@ def escalation_reason(
     close_confidence_min: float,
     rule_id: str = "",
     no_auto_close: frozenset[str] = frozenset(),
+    prior_sar: bool = False,
 ) -> str | None:
     """Why the case may not be auto-closed, or None if it may. First reason wins."""
     if verdict is None:
@@ -35,6 +36,8 @@ def escalation_reason(
         return "verdict is not grounded in evidence"
     if rule_id in no_auto_close:
         return f"rule '{rule_id}' is never auto-closed (no reliable signal to close it)"
+    if prior_sar:
+        return "customer has a prior analyst-approved escalation"
     if verdict.disposition != "close":
         return "verdict recommends escalation"
     if verdict.risk_score > close_risk_max:
@@ -51,10 +54,17 @@ def route_verdict(
     close_confidence_min: float,
     rule_id: str = "",
     no_auto_close: frozenset[str] = frozenset(),
+    prior_sar: bool = False,
 ) -> Literal["close_case", "draft_sar"]:
     """Auto-close only when everything is clearly benign; otherwise escalate."""
     reason = escalation_reason(
-        verdict, grounded, close_risk_max, close_confidence_min, rule_id, no_auto_close
+        verdict,
+        grounded,
+        close_risk_max,
+        close_confidence_min,
+        rule_id,
+        no_auto_close,
+        prior_sar,
     )
     return "draft_sar" if reason else "close_case"
 

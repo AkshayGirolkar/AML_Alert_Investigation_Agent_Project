@@ -10,6 +10,7 @@ import logging
 import signal
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.store.postgres import AsyncPostgresStore
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -75,6 +76,8 @@ async def run(settings: Settings) -> None:
     try:
         checkpointer = AsyncPostgresSaver(pool)  # type: ignore[arg-type]
         await checkpointer.setup()  # creates the checkpoint tables if missing
+        store = AsyncPostgresStore(pool)  # type: ignore[arg-type]
+        await store.setup()  # F09 long-term memory tables
         graph = build_graph(
             make_conn_factory(settings.sync_database_url),
             plan_llm=OpenAILLM(settings.llm_plan_model, settings.openai_api_key),
@@ -82,6 +85,7 @@ async def run(settings: Settings) -> None:
             embedder=OpenAIEmbedder(settings.openai_api_key),
             settings=settings,
             checkpointer=checkpointer,
+            store=store,
         )
         async with open_queue(settings) as queue:
             processor = Processor(
