@@ -7,7 +7,7 @@ Project overview and architecture:
 
 ## Status
 
-In progress. F00–F07 have been started or built (app code, Alembic migrations, ingestion, synthetic data in `app/synth/`). The repo is under git (feature branches, PRs into `main`). Use the single local venv `.venv/` (Python 3.12, gitignored); don't create other venvs.
+In progress. F00–F08 have been started or built (app code, Alembic migrations, ingestion, synthetic data in `app/synth/`). The repo is under git (feature branches, PRs into `main`). Use the single local venv `.venv/` (Python 3.12, gitignored); don't create other venvs.
 
 Full design (data sources, architecture, LangGraph graph, feature breakdown F00–F18, eval plan, build order):
 
