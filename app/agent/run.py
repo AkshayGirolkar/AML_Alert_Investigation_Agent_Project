@@ -10,12 +10,16 @@ import json
 from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.store.base import BaseStore
+from langgraph.store.memory import InMemoryStore
+from langgraph.store.postgres import AsyncPostgresStore
 from langgraph.types import Command
 
 from app.agent.graph import build_graph
 from app.agent.llm import OpenAILLM
 from app.agent.tools.registry import make_conn_factory
 from app.config import get_settings
+from app.db.copy import conninfo
 from app.synth.embeddings import OpenAIEmbedder
 
 
@@ -28,21 +32,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--decision", choices=["approve", "reject"])
     parser.add_argument("--analyst-id", default="cli")
     parser.add_argument("--notes")
+    parser.add_argument(
+        "--memory-pg",
+        action="store_true",
+        help="keep customer memory (F09) in Postgres so it persists between CLI runs",
+    )
     args = parser.parse_args(argv)
 
     s = get_settings()
     if not s.openai_api_key:
         parser.error("OPENAI_API_KEY is not set (see .env.example)")
-    graph = build_graph(
-        make_conn_factory(s.sync_database_url),
-        plan_llm=OpenAILLM(s.llm_plan_model, s.openai_api_key),
-        assess_llm=OpenAILLM(s.llm_assess_model, s.openai_api_key),
-        embedder=OpenAIEmbedder(s.openai_api_key),
-        settings=s,
-        checkpointer=MemorySaver(),
-    )
 
-    async def investigate() -> dict[str, Any]:
+    async def investigate(store: BaseStore) -> dict[str, Any]:
+        graph = build_graph(
+            make_conn_factory(s.sync_database_url),
+            plan_llm=OpenAILLM(s.llm_plan_model, s.openai_api_key),
+            assess_llm=OpenAILLM(s.llm_assess_model, s.openai_api_key),
+            embedder=OpenAIEmbedder(s.openai_api_key),
+            settings=s,
+            checkpointer=MemorySaver(),
+            store=store,
+        )
         config = {"configurable": {"thread_id": f"cli-{args.alert_id}"}}
         state: dict[str, Any] = await graph.ainvoke({"alert_id": args.alert_id}, config)
         if state.get("__interrupt__") and args.decision:
@@ -54,7 +64,16 @@ def main(argv: list[str] | None = None) -> int:
             state = await graph.ainvoke(Command(resume=resume), config)
         return state
 
-    state = asyncio.run(investigate())
+    async def main_async() -> dict[str, Any]:
+        if not args.memory_pg:  # in-process memory: forgotten when the CLI exits
+            return await investigate(InMemoryStore())
+        async with AsyncPostgresStore.from_conn_string(
+            conninfo(s.sync_database_url)
+        ) as store:
+            await store.setup()
+            return await investigate(store)
+
+    state = asyncio.run(main_async())
     paused = bool(state.get("__interrupt__"))
 
     if args.json:
@@ -72,6 +91,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  tool calls: {state['tool_calls']}  skipped: {state['skipped_checks']}")
     for e in state["evidence"]:
         print(f"  [{e['evidence_id']}] {e['status']}: {e['summary']}")
+    if state.get("history"):
+        print(f"  prior cases on this customer: {len(state['history'])}")
     if state.get("sar_draft"):
         print("\nSAR draft:\n" + state["sar_draft"]["narrative"])
     if paused:

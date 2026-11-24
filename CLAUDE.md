@@ -50,6 +50,8 @@ F07 (async): `docker compose up -d --build` runs postgres, localstack (SQS), mig
 
 F08 (human review): escalated cases pause at `human_review` (`interrupt()`), status `awaiting_review`; `POST /cases/{id}/decision` records the decision (`decisions`, `audit_log`) and sends a `resume` SQS message that the worker turns into `Command(resume=...)`. `python -m app.agent.run --alert-id N --decision approve` demos it with an in-memory checkpointer. No auth yet (F11), so `analyst_id` is in the request body.
 
+F09 (long-term memory): `recall_history` (after `load_kyc`) and `write_memory` (end of both the close and review paths) use an `AsyncPostgresStore` (tables from `store.setup()`, like the checkpointer). Records live under `("customer_history", entity_id)`, key `alert-{id}`; history goes into prompts as context, never evidence, and a prior analyst-approved escalation blocks auto-close (`memory_block_auto_close_on_prior_sar`). `build_graph(..., store=None)` makes memory a no-op. The CLI forgets between runs unless you pass `--memory-pg`. See `docs/adr/0003-f09-long-term-memory.md`.
+
 Not built yet: redis in `docker-compose.yml`, GitHub Actions CI, `pyproject.toml`.
 
 Required env in `.env` (never commit): `OPENAI_API_KEY`, `LANGSMITH_API_KEY`, `LANGSMITH_TRACING=true`, optional `ANTHROPIC_API_KEY`. Kaggle download needs `~/.kaggle/kaggle.json`.

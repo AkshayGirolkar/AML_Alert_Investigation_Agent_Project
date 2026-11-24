@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # evidence the agent can tell true from false alerts for these; a human decides.
     no_auto_close_rules: str = "fan_in,high_risk_counterparty"
 
+    # F09 long-term memory
+    memory_history_limit: int = 5  # prior cases on the same customer shown to the agent
+    # Never auto-close a customer who already has an analyst-approved escalation.
+    memory_block_auto_close_on_prior_sar: bool = True
+
     # F07 async execution (SQS via LocalStack locally; endpoint unset on real AWS)
     aws_region: str = "us-east-1"
     aws_endpoint_url: str | None = None

@@ -7,6 +7,7 @@ class InvestigationState(TypedDict, total=False):
     alert_id: int
     alert: dict[str, Any]
     kyc: dict[str, Any] | None
+    history: list[dict[str, Any]]  # F09: prior cases on this customer, newest first
     plan: list[dict[str, Any]]
     evidence: list[dict[str, Any]]  # Evidence.model_dump(mode="json"), de-duplicated
     tool_calls: int  # calls made (incl. failed), capped at settings.max_tool_calls

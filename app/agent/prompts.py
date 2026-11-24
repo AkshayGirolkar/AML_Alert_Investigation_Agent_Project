@@ -30,6 +30,10 @@ counterparties with high-risk ratings, or volume far out of line with the KYC pr
 Close when the evidence explains the alert as ordinary activity. State in `rationale`
 what, beyond the rule hit, drove your decision.
 
+If PRIOR HISTORY is shown, weigh it (a customer cleared before for the same activity is
+more likely benign; one with an approved SAR deserves more scrutiny), but it is context,
+not evidence: never cite it in `evidence_ids`, and never let it replace the evidence.
+
 risk_score and confidence are between 0 and 1. Set `typology` only when the evidence shows
 the structure of a pattern (e.g. FAN-OUT, FAN-IN, CYCLE, SCATTER-GATHER, STACK); do not
 just repeat the rule's name. Otherwise use null."""
@@ -50,8 +54,25 @@ def alert_view(alert: dict[str, Any]) -> dict[str, Any]:
     return view
 
 
-def plan_user(alert: dict[str, Any], kyc: dict[str, Any] | None) -> str:
-    return f"ALERT:\n{_dump(alert_view(alert))}\n\nKYC PROFILE:\n{_dump(kyc)}"
+def history_block(history: list[dict[str, Any]] | None) -> str:
+    """Prior cases on this customer. Context only: it has no evidence IDs."""
+    if not history:
+        return ""
+    return (
+        "\n\nPRIOR HISTORY (earlier cases on this customer; context only, not "
+        f"citable evidence):\n{_dump(history)}"
+    )
+
+
+def plan_user(
+    alert: dict[str, Any],
+    kyc: dict[str, Any] | None,
+    history: list[dict[str, Any]] | None = None,
+) -> str:
+    return (
+        f"ALERT:\n{_dump(alert_view(alert))}\n\nKYC PROFILE:\n{_dump(kyc)}"
+        f"{history_block(history)}"
+    )
 
 
 def evidence_block(evidence: list[dict[str, Any]]) -> str:
@@ -68,10 +89,11 @@ def assess_user(
     kyc: dict[str, Any] | None,
     evidence: list[dict[str, Any]],
     feedback: list[str],
+    history: list[dict[str, Any]] | None = None,
 ) -> str:
     text = (
-        f"ALERT:\n{_dump(alert_view(alert))}\n\nKYC PROFILE:\n{_dump(kyc)}\n\n"
-        f"EVIDENCE:\n{evidence_block(evidence)}"
+        f"ALERT:\n{_dump(alert_view(alert))}\n\nKYC PROFILE:\n{_dump(kyc)}"
+        f"{history_block(history)}\n\nEVIDENCE:\n{evidence_block(evidence)}"
     )
     if feedback:
         text += "\n\nYOUR PREVIOUS ANSWER WAS REJECTED:\n" + "\n".join(feedback)

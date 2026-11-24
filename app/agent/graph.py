@@ -1,9 +1,10 @@
 """LangGraph investigation graph (F06). Async; pass a checkpointer (F07) to make runs resumable.
 
-load_alert -> load_kyc -> plan -> tool_loop -> assess -> validate_grounding
-    -> grounded & benign & confident: close_case
+load_alert -> load_kyc -> recall_history (F09) -> plan -> tool_loop -> assess
+    -> validate_grounding
+    -> grounded & benign & confident (& no prior approved SAR): close_case -> write_memory
     -> not grounded, first failure:   assess (retry once)
-    -> otherwise:                     draft_sar -> human_review (interrupt, F08) -> END
+    -> otherwise: draft_sar -> human_review (interrupt, F08) -> write_memory -> END
 
 `human_review` needs a checkpointer: the graph stops there until it is resumed with
 `Command(resume={"decision", "analyst_id", "notes"})`.
@@ -12,6 +13,7 @@ load_alert -> load_kyc -> plan -> tool_loop -> assess -> validate_grounding
 from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.store.base import BaseStore
 
 from app.agent.llm import LLM
 from app.agent.nodes import Nodes
@@ -32,6 +34,7 @@ def build_graph(
     embedder: Embedder | None = None,
     settings: Settings | None = None,
     checkpointer: Any = None,
+    store: BaseStore | None = None,
 ) -> Any:
     settings = settings or get_settings()
     nodes = Nodes(
@@ -40,6 +43,7 @@ def build_graph(
         plan_llm,
         assess_llm or plan_llm,
         settings,
+        store,
     )
 
     def after_validation(
@@ -56,11 +60,14 @@ def build_graph(
             settings.close_confidence_min,
             state["alert"]["rule_id"],
             settings.no_auto_close_rule_set,
+            nodes.prior_sar(state),
         )
 
     g = StateGraph(InvestigationState)
     g.add_node("load_alert", nodes.load_alert)
     g.add_node("load_kyc", nodes.load_kyc)
+    g.add_node("recall_history", nodes.recall_history)
+    g.add_node("write_memory", nodes.write_memory)
     g.add_node("plan", nodes.plan)
     g.add_node("tool_loop", nodes.tool_loop)
     g.add_node("assess", nodes.assess)
@@ -71,12 +78,14 @@ def build_graph(
 
     g.add_edge(START, "load_alert")
     g.add_edge("load_alert", "load_kyc")
-    g.add_edge("load_kyc", "plan")
+    g.add_edge("load_kyc", "recall_history")
+    g.add_edge("recall_history", "plan")
     g.add_edge("plan", "tool_loop")
     g.add_edge("tool_loop", "assess")
     g.add_edge("assess", "validate_grounding")
     g.add_conditional_edges("validate_grounding", after_validation)
-    g.add_edge("close_case", END)
+    g.add_edge("close_case", "write_memory")
     g.add_edge("draft_sar", "human_review")
-    g.add_edge("human_review", END)
+    g.add_edge("human_review", "write_memory")
+    g.add_edge("write_memory", END)
     return g.compile(checkpointer=checkpointer)
