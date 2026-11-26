@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 from sqlalchemy.engine import make_url
 
+from app.auth.client import api_headers
 from app.config import get_settings
 from app.loadtest.collect import (
     count_unfinished,
@@ -170,7 +171,9 @@ async def run(a: argparse.Namespace) -> int:
             return await asyncio.to_thread(total_cost, url, alert_ids) > a.max_cost_usd
 
         print(f"Enqueueing {len(alert_ids)} alerts ({a.profile})...")
-        async with httpx.AsyncClient(base_url=a.api_url, timeout=30) as client:
+        async with httpx.AsyncClient(
+            base_url=a.api_url, timeout=30, headers=api_headers()
+        ) as client:
             sent = await enqueue_all(
                 client, alert_ids, a.profile, a.rate, a.enqueue_concurrency
             )

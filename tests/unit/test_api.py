@@ -45,7 +45,12 @@ class FakeStore:
         return self.decisions.get(case_id)
 
     async def record_decision(
-        self, case_id: int, decision: str, analyst_id: str, notes: str | None
+        self,
+        case_id: int,
+        decision: str,
+        analyst_id: str,
+        notes: str | None,
+        audit_extra: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any] | None, str | None]:
         case = await self.get(case_id)
         if case is None:
@@ -55,7 +60,12 @@ class FakeStore:
             return ("duplicate" if same else "conflict"), existing, case["status"]
         if case["status"] != "awaiting_review":
             return "not_reviewable", None, case["status"]
-        row = {"case_id": case_id, "decision": decision, "analyst_id": analyst_id}
+        row = {
+            "case_id": case_id,
+            "decision": decision,
+            "analyst_id": analyst_id,
+            "audit_extra": audit_extra,
+        }
         self.decisions[case_id] = row
         return "recorded", row, case["status"]
 

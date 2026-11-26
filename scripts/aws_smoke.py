@@ -12,6 +12,7 @@ import json
 
 import httpx
 
+from app.auth.client import api_headers
 from app.aws_smoke import run_smoke
 from app.loadtest.seed import LoadSet
 
@@ -21,7 +22,9 @@ async def run(a: argparse.Namespace) -> int:
     if alert_id is None:
         alert_id = LoadSet.load(f"loadtest/datasets/{a.name}.json").alert_ids[0]
     print(f"Smoke test: alert {alert_id} on {a.api_url}")
-    async with httpx.AsyncClient(base_url=a.api_url, timeout=30) as client:
+    async with httpx.AsyncClient(
+        base_url=a.api_url, timeout=30, headers=api_headers()
+    ) as client:
         res = await run_smoke(client, alert_id, a.analyst_id, a.timeout)
     for step in res.steps:
         print(" -", step)

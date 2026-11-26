@@ -1,0 +1,68 @@
+F11 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+After F10 anybody who can reach the API can start investigations and approve a
+suspicious activity report. The decision even records whatever name the caller
+typed in. For a compliance system that is not acceptable: an auditor must be
+able to ask "who approved this?" and get a name that was proven, not claimed.
+
+
+2. THE PROBLEM F11 SOLVES
+-------------------------
+Think of the API as an office building. Before F11 the front door was open and
+people wrote their own name in the visitor book. F11 adds a badge reader:
+
+  - Your badge is a signed token (a JWT) issued by an identity service (Cognito
+    in AWS). The API checks the signature, the expiry date and who issued it.
+  - Your badge lists your group: analyst or supervisor.
+  - The visitor book now copies the name from the badge, not from what you say.
+
+
+3. WHAT WAS BUILT
+-----------------
+  - app/auth/tokens.py   checks a token and turns it into "who and which roles".
+  - app/auth/deps.py     the FastAPI "guards" put on each route.
+  - Routes: every case/alert route needs a badge. /health, /ready, /metrics do not.
+  - Decisions: recorded under the badge's name. If the request body claims a
+    different name it is refused (403).
+  - Four-eyes rule: a case with risk score 0.9 or higher can only be decided by a
+    supervisor. Analysts get 403 and must hand it over.
+  - The audit log row for each decision also stores the roles and the token's
+    subject id.
+  - AUTH_MODE=off (default) keeps everything working without tokens for local
+    work and load tests. AUTH_MODE=jwt turns the badge reader on.
+  - scripts/mint_token.py makes a dev badge; API_TOKEN lets the smoke and load
+    test scripts present one.
+
+
+4. HOW A REQUEST FLOWS
+----------------------
+  client sends  Authorization: Bearer <token>
+    -> verify signature (JWKS key for Cognito, shared secret for dev)
+    -> check exp, issuer, audience
+    -> read groups -> roles
+    -> route guard: allowed role? no -> 403, bad token -> 401
+    -> decision route: token user becomes analyst_id; high risk needs supervisor
+    -> store decision + audit row, then resume the graph (as in F08)
+
+
+5. THINGS TO KNOW
+-----------------
+  - Only the algorithm from settings is accepted. A forged "alg none" token or an
+    HS256 token made with the public key is rejected (tests cover both).
+  - Browsers' EventSource cannot send headers, so the future console must read the
+    SSE stream with fetch.
+  - No Cognito pool is created yet. With real AWS you either run AUTH_MODE=off
+    behind the IP-restricted ALB or create a pool by hand and set AUTH_JWKS_URL
+    and AUTH_ISSUER.
+  - Tokens are not checked for revocation; keep them short-lived.
+
+
+6. HOW TO TRY IT
+----------------
+  AUTH_MODE=jwt and AUTH_JWT_SECRET=<32+ random chars> in .env, restart the API, then
+    export API_TOKEN=$(.venv/bin/python -m scripts.mint_token --user ana --role analyst)
+    curl -H "Authorization: Bearer $API_TOKEN" localhost:8000/cases/1
+  Without the header you get 401; with --role supervisor you can decide 0.9+ risk cases.

@@ -90,6 +90,17 @@ class Settings(BaseSettings):
     console_relay_poll_seconds: float = 5.0
     console_relay_max_attempts: int = 5
 
+    # F11 auth: "off" (local dev, load tests) or "jwt" (Cognito-compatible bearer tokens).
+    # jwt needs AUTH_JWKS_URL (Cognito, RS256) or AUTH_JWT_SECRET (HS256, dev only).
+    auth_mode: Literal["off", "jwt"] = "off"
+    auth_jwks_url: str = ""
+    auth_jwt_secret: str = ""
+    auth_issuer: str = ""
+    auth_audience: str = ""  # app client id; checked against `aud` or `client_id`
+    auth_roles_claim: str = "cognito:groups"
+    # Decisions on cases at or above this verdict risk score need the supervisor role.
+    auth_supervisor_min_risk: float = 0.9
+
     # F04 rules engine thresholds (see app/rules/config.py for meaning and validation)
     rule_velocity_window_hours: int = 1
     rule_velocity_min_txns: int = 10
