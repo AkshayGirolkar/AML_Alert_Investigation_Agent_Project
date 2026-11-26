@@ -1,0 +1,123 @@
+F17 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+Everything so far runs on one laptop inside Docker. To show the system works as a
+real service it has to run in the cloud: on machines you can switch on and off,
+with a database that is not on your desk, secrets that are not in a file, and
+alarms that tell you when something is wrong.
+
+
+2. THE PROBLEM
+--------------
+  - Clicking around the AWS console to build all this is slow, can't be reviewed
+    and can't be repeated.
+  - Cloud machines bill by the hour, so forgetting to switch them off costs money.
+  - Passwords and API keys must not live in the code or in the repository.
+  - The database and Redis must not be reachable from the internet, but a load
+    test still has to reach them.
+  - A new version of the app must be rolled out without losing a case that is
+    half-way through an investigation.
+
+
+3. HOW IT IS SOLVED (restaurant analogy)
+----------------------------------------
+We write down the whole restaurant as a blueprint (Terraform) instead of building
+it by hand. One command builds the building, the kitchen, the pantry and the fire
+alarms; one command tears it all down.
+  - The VPC is the building. The dining room (load balancer) faces the street but
+    only lets in guests on a short list (your IP). The kitchen, pantry (database)
+    and fridge (Redis) are in the back with no street door.
+  - The kitchen's one delivery door (the NAT gateway) lets the cooks phone out to
+    the supplier (OpenAI) without letting anyone phone in.
+  - ECS Fargate rents cooks by the hour: two waiters (API) and a cook (worker)
+    who is called in extra when the order queue grows (autoscaling).
+  - The order queue (SQS) and its "problem orders" tray (DLQ) are built by the
+    blueprint too.
+  - Secrets Manager is a locked cabinet; the cooks get the keys at the start of
+    their shift. The database password is made and kept by the database itself.
+  - A budget alarm sits in a separate little office, so tearing the restaurant
+    down never switches off the bill warning.
+  - New recipes (a new app version) are rolled out by a script: it prints the new
+    recipe card, runs the "reorganise the pantry" job once, then swaps the cards
+    on the waiters and cooks one at a time. The blueprint does not decide which
+    recipe is current; the script does.
+
+
+4. FILES ADDED AND CHANGED
+--------------------------
+  infra/*.tf                    network, RDS, Redis, SQS, ECR, secrets, S3, ECS,
+                                load balancer, alarms, autoscaling, IAM, GitHub
+                                deploy role.
+  infra/budget/main.tf          the monthly budget alarm, separate on purpose.
+  infra/README.md               the exact commands, in order.
+  app/messaging/sqs.py          on real AWS the queues are looked up, not created.
+  app/config.py                 DB URLs now escape odd characters in the password.
+  app/aws_smoke.py,
+  scripts/aws_smoke.py          one alert through investigate, approve, resume.
+  scripts/aws_deploy.sh         roll out a new image (migrate, then update).
+  scripts/aws_seed.sh,
+  scripts/restore_seed.py       copy the local data into the cloud database.
+  app/loadtest/sampler.py,
+  scripts/loadtest_run.py       CloudWatch sampling, "assume fake LLM", S3 upload.
+  Dockerfile                    adds the Postgres 17 client and dataset manifests.
+  .github/workflows/ci.yml      lint, types, tests, eval gate, Docker build,
+                                Terraform check.
+  .github/workflows/deploy.yml  build, push, roll out, with no stored AWS keys.
+  docs/adr/0010-..., docs/runbook-aws.md, docs/architecture-aws.md, README.md.
+
+
+5. WORKED EXAMPLE
+-----------------
+You run the budget stack once and confirm the email. You apply the main stack
+(about 15 minutes): the building, database, queue and a load balancer exist, but
+the services have no recipe yet so they run zero cooks. You paste your OpenAI key
+into the locked cabinet. You build the image, push it, and run aws_deploy.sh: it
+runs the database migration as a one-off job, then starts 2 API tasks and 1
+worker. aws_seed.sh copies your local data up and restores it. aws_smoke.py
+sends one alert: the worker investigates, the case pauses for review, the script
+approves it, the worker finishes, and the script prints RESULT: ok.
+Later you switch the workers to the fake LLM and run the 1,000-alert test from a
+one-off task inside the VPC; watch the queue grow, the alarm email arrive if
+anything sticks, and the worker count rise from 1 and fall back. Then terraform
+destroy, and the checklist in the runbook.
+
+
+6. SAFETY RULES
+---------------
+  - The agent never runs terraform apply or destroy unasked; you do.
+  - No keys in git or in Terraform outputs. The database password is created by
+    RDS; API keys are put in by hand; GitHub deploys through a short-lived role.
+  - RDS and Redis are only reachable from the application's security group.
+  - The ALB only admits the IPs in allowed_cidrs (and the NAT IP for load tests).
+  - Every resource is tagged Project/Env; the budget alarm survives destroy.
+  - The deploy role can push images and roll services, not change infrastructure.
+  - A failed migration stops the rollout before any service is updated.
+
+
+7. WHERE IT FITS
+----------------
+After F16 (load test) and before the portfolio polish. The F16 numbers (about
+2.3 LLM calls per case, one worker process saturating a core, the 300 s
+visibility timeout) set the worker size and the autoscaling target. The F10
+Redis, F07 queue and F13 metrics are unchanged; only how they are reached differs.
+
+
+8. KNOWN LIMITATIONS
+--------------------
+  - Nothing here has been applied to a real AWS account yet. The autoscaling
+    metric math, one IAM condition, the run-task overrides and the CloudWatch
+    sampler are untested; expect a few fixes on the first real run.
+  - The API has no login. Safety is "only your IP can reach it". F11 (JWT) and
+    Cognito were not built.
+  - HTTP only, one NAT gateway, single-AZ database: fine for a demo, not for
+    production.
+  - Terraform state is a local file; do not lose it, and only one person can apply.
+  - The CI deploy cannot curl the app (the load balancer blocks GitHub), so it
+    only waits for ECS to report healthy tasks.
+  - The seed dump is whatever your local database holds (the full 5M rows today,
+    about 1.4 GB); the restore task is sized small and may need more memory.
+  - A killed worker's cases wait up to 5 minutes (the visibility timeout) before
+    another worker picks them up.
+  - Cost figures are list-price estimates; check the bill after the first session.
