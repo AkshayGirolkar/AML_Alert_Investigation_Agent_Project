@@ -14,6 +14,7 @@ message and the graph continues with `Command(resume=decision)` from its checkpo
 import asyncio
 import contextlib
 import logging
+import time
 from collections.abc import Callable
 from typing import Any, Literal
 
@@ -22,6 +23,9 @@ from langgraph.types import Command
 from app.agent.gateway import case_scope
 from app.db.cases import CaseStore
 from app.messaging.sqs import InvestigationQueue, QueueMessage
+from app.observability.logging import bind_case
+from app.observability.metrics import metrics
+from app.observability.tracing import case_trace_config
 from app.services.events import EventPublisher
 from app.services.locks import RedisLock, case_lock_key
 
@@ -30,8 +34,12 @@ log = logging.getLogger("worker")
 Result = Literal["completed", "awaiting_review", "skipped", "retry", "failed"]
 
 
-def thread_config(alert_id: int) -> dict[str, Any]:
-    return {"configurable": {"thread_id": f"alert-{alert_id}"}}
+def thread_config(alert_id: int, case_id: int | None = None) -> dict[str, Any]:
+    thread_id = f"alert-{alert_id}"
+    config: dict[str, Any] = {"configurable": {"thread_id": thread_id}}
+    if case_id is not None:  # F13: name and tag the LangSmith trace of this case
+        config.update(case_trace_config(case_id, alert_id, thread_id))
+    return config
 
 
 def pending_interrupts(snapshot: Any) -> list[Any]:
@@ -64,10 +72,13 @@ async def _drive(
 
 
 async def run_graph(
-    graph: Any, alert_id: int, publish: Publish | None = None
+    graph: Any,
+    alert_id: int,
+    publish: Publish | None = None,
+    case_id: int | None = None,
 ) -> dict[str, Any]:
     """Start the investigation, or continue it from its checkpoint."""
-    config = thread_config(alert_id)
+    config = thread_config(alert_id, case_id)
     snapshot = await graph.aget_state(config)
     if pending := pending_interrupts(snapshot):  # already waiting for the analyst
         log.info("alert %s: already waiting for analyst review", alert_id)
@@ -88,9 +99,10 @@ async def resume_graph(
     alert_id: int,
     decision: dict[str, Any],
     publish: Publish | None = None,
+    case_id: int | None = None,
 ) -> dict[str, Any]:
     """Continue a paused graph with the analyst's decision (safe to repeat)."""
-    config = thread_config(alert_id)
+    config = thread_config(alert_id, case_id)
     snapshot = await graph.aget_state(config)
     if pending_interrupts(snapshot):
         return await _drive(graph, Command(resume=decision), config, publish)
@@ -168,24 +180,31 @@ class Processor:
             self._heartbeat(msg.receipt_handle, msg.case_id, lock)
         )
         result: Result
+        started = time.monotonic()
         try:
             if publish:
                 await publish("started", {"resume": resume})
-            with case_scope(msg.case_id):  # F12: attributes LLM usage to this case
+            # F12: attributes LLM usage to this case; F13: tags its logs
+            with case_scope(msg.case_id), bind_case(msg.case_id, msg.alert_id):
                 if resume:
                     state = await self._resume(msg, publish)
                 else:
-                    state = await run_graph(self._graph, msg.alert_id, publish)
+                    state = await run_graph(
+                        self._graph, msg.alert_id, publish, msg.case_id
+                    )
             if is_paused(state):
                 await self._store.mark_awaiting_review(msg.case_id, state)
                 result = "awaiting_review"
             else:
                 await self._store.complete(msg.case_id, state)
                 result = "completed"
+            metrics.inc("cases_processed_total", result=result)
+            metrics.observe("case_seconds", time.monotonic() - started, result=result)
             if publish:
                 await publish("status", {"status": result})
         except Exception as exc:
             final = msg.receive_count >= self._max_receive
+            metrics.inc("cases_processed_total", result="failed" if final else "retry")
             log.exception("case %s failed (receive %s)", msg.case_id, msg.receive_count)
             await self._store.record_error(
                 msg.case_id,
@@ -217,4 +236,6 @@ class Processor:
             "analyst_id": decision["analyst_id"],
             "notes": decision["notes"],
         }
-        return await resume_graph(self._graph, msg.alert_id, payload, publish)
+        return await resume_graph(
+            self._graph, msg.alert_id, payload, publish, msg.case_id
+        )

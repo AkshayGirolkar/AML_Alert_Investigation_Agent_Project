@@ -225,3 +225,39 @@ async def test_resume_after_the_graph_already_finished_reuses_final_state() -> N
 async def test_resume_without_any_checkpoint_is_an_error() -> None:
     with pytest.raises(RuntimeError, match="no checkpoint"):
         await resume_graph(FakeGraph(), 9, DECISION)
+
+
+# ------------------------------------------------------------- F13 observability
+
+
+async def test_processing_records_metrics_and_tags_the_trace() -> None:
+    from app.observability.logging import _case_id
+    from app.observability.metrics import metrics
+
+    configs: list[dict[str, Any]] = []
+    seen_case: list[Any] = []
+
+    class SpyGraph(FakeGraph):
+        async def ainvoke(self, payload: Any, config: dict[str, Any]) -> dict[str, Any]:
+            configs.append(config)
+            seen_case.append(_case_id.get())
+            return await super().ainvoke(payload, config)
+
+    assert (
+        await _proc(SpyGraph(), FakeStore(), FakeQueue()).handle(_msg()) == "completed"
+    )
+    cfg = configs[0]
+    assert cfg["metadata"] == {"case_id": 1, "alert_id": 9, "thread_id": "alert-9"}
+    assert cfg["configurable"]["thread_id"] == "alert-9"
+    assert seen_case == [1]  # logs inside the graph carry the case id
+    out = metrics.render()
+    assert 'cases_processed_total{result="completed"}' in out
+    assert "case_seconds_count" in out
+
+
+async def test_failure_is_counted() -> None:
+    from app.observability.metrics import metrics
+
+    graph = FakeGraph(error=RuntimeError("x"))
+    assert await _proc(graph, FakeStore(), FakeQueue()).handle(_msg(3)) == "failed"
+    assert 'cases_processed_total{result="failed"}' in metrics.render()

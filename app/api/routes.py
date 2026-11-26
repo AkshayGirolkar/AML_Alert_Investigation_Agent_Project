@@ -1,6 +1,7 @@
 """HTTP routes (F07, F08). Handlers depend on a `CaseStore` and an `InvestigationQueue`."""
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -13,6 +14,7 @@ from app.api.schemas import DecisionRequest
 from app.config import get_settings
 from app.db.cases import CaseStore, public_case
 from app.messaging.sqs import InvestigationQueue
+from app.observability.scrape import scrape
 from app.services import case_commands as commands
 from app.services.events import (
     TERMINAL_STATUSES,
@@ -21,6 +23,7 @@ from app.services.events import (
     parse_entry,
 )
 
+log = logging.getLogger("api")
 router = APIRouter()
 
 
@@ -42,6 +45,43 @@ async def health(request: Request) -> dict[str, str]:
         except Exception as exc:
             raise HTTPException(503, "database unavailable") from exc
     return {"status": "ok"}
+
+
+@router.get("/ready")
+async def ready(request: Request) -> dict[str, Any]:
+    """Database is required (503 without it); Redis and SQS only mark the API degraded."""
+    engine = getattr(request.app.state, "engine", None)
+    if engine is not None:
+        try:
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+        except Exception as exc:
+            raise HTTPException(503, "database unavailable") from exc
+    degraded: list[str] = []
+    redis = getattr(request.app.state, "redis", None)
+    if redis is not None:
+        try:
+            await redis.ping()
+        except Exception:
+            log.exception("ready: redis unavailable")
+            degraded.append("redis")
+    depths = getattr(_queue(request), "depths", None)
+    if depths is not None:
+        try:
+            await depths()
+        except Exception:
+            log.exception("ready: sqs unavailable")
+            degraded.append("sqs")
+    return {"status": "degraded" if degraded else "ok", "degraded": degraded}
+
+
+@router.get("/metrics")
+async def metrics_endpoint(request: Request) -> Response:
+    text_out = await scrape(
+        getattr(request.app.state, "engine", None),
+        getattr(_queue(request), "depths", None),
+    )
+    return Response(text_out, media_type="text/plain; version=0.0.4")
 
 
 @router.post("/alerts/{alert_id}/investigations", status_code=202)

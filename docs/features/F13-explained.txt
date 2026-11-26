@@ -1,0 +1,73 @@
+F13 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+After F12 the system investigates alerts reliably and counts LLM cost. But when
+something looks wrong at 3 a.m. there is little to look at:
+
+  - Log lines are plain text, and nothing says which case a line belongs to.
+  - You cannot see inside one investigation: what was asked, what came back.
+  - Nobody can tell how deep the queue is, how long cases take, or what they cost.
+  - And the data is bank data: names, accounts, emails must never be shipped to
+    an outside tracing service.
+
+F13 adds the dashboard-and-flight-recorder layer, with privacy built in.
+
+
+2. WHAT WAS BUILT
+-----------------
+  Structured logs (app/observability/logging.py)
+    Each log line becomes one JSON object (LOG_FORMAT=json). Inside a case it
+    carries case_id and alert_id; inside an API call it carries request_id. This
+    works through "context variables", so no function had to change signatures.
+
+  PII masking (app/observability/pii.py)
+    mask() walks any nested data and replaces personal values with [MASKED]:
+    values under keys like name/email/phone/account, plus emails, phone numbers,
+    IBANs, SSNs, hex account ids and API keys found inside free text. Evidence
+    ids and amounts are left alone so traces stay useful. Running it twice gives
+    the same result and it never changes the original data.
+
+  LangSmith tracing (app/observability/tracing.py)
+    Off unless LANGSMITH_TRACING=true and a key is set. When on, the LangSmith
+    client is created WITH the masker attached to inputs, outputs and metadata,
+    so nothing leaves the process unmasked. If an unmasked client somehow already
+    exists, tracing is turned off instead. Each case is one trace named
+    investigate-alert-N, tagged with case_id, alert_id and thread_id.
+
+  Metrics (app/observability/metrics.py, scrape.py)
+    GET /metrics (Prometheus text) shows: cases by status, oldest case waiting
+    for review, recorded LLM cost/tokens, queue depth and DLQ depth, request
+    counts and latency. The worker, being a separate process, counts case
+    outcomes/duration and LLM latency/tokens/cost itself and can serve them on
+    WORKER_METRICS_PORT. GET /ready says "degraded" (not "down") when only Redis
+    or SQS has trouble.
+
+
+3. WHY IT IS DESIGNED THIS WAY
+------------------------------
+  - Regex masker instead of Presidio: instant, no 500MB language model, fully
+    testable. It can be swapped later behind the same mask() function.
+  - Metrics read the database at scrape time because the API and worker are
+    different processes; counting twice in memory would disagree.
+  - Observability must never break a case: every scrape source is separately
+    guarded and tracing setup never raises.
+
+
+4. HOW TO TRY IT
+----------------
+  LOG_FORMAT=json .venv/bin/python -m app.worker
+  curl localhost:8000/metrics ; curl localhost:8000/ready
+  LANGSMITH_TRACING=true LANGSMITH_API_KEY=... python -m app.agent.run --alert-id N
+  (then look for investigate-alert-N in LangSmith: names and accounts are masked)
+
+
+5. LIMITS
+---------
+  - The masker can miss a person's name written inside free text; keyed KYC fields
+    are the main protection.
+  - Node-by-node latency is not a metric yet; the LangSmith trace shows it.
+  - CloudWatch alarms and log shipping come with F17.
+
+NEXT: F15 evaluation harness (uses these traces and the llm_calls cost data).

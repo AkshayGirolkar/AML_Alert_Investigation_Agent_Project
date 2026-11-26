@@ -24,6 +24,9 @@ from app.config import Settings, get_settings
 from app.db.cases import SqlCaseStore
 from app.db.copy import conninfo
 from app.messaging.sqs import InvestigationQueue, open_queue
+from app.observability.logging import configure_logging
+from app.observability.metrics import metrics
+from app.observability.tracing import setup_tracing
 from app.redis_client import make_redis
 from app.services.events import EventPublisher
 from app.services.rate_limiter import RedisTokenBucket
@@ -126,6 +129,11 @@ async def run(settings: Settings) -> None:
                 lock_ttl=settings.case_lock_ttl_seconds,
             )
             log.info("worker started (concurrency=%d)", settings.worker_concurrency)
+            metrics_task: asyncio.Task[None] | None = None
+            if settings.worker_metrics_port > 0:
+                metrics_task = asyncio.create_task(
+                    serve_metrics(settings.worker_metrics_port, stop)
+                )
             relay_task: asyncio.Task[None] | None = None
             if settings.console_relay_enabled:
                 relay = ConsoleRelay(
@@ -146,15 +154,42 @@ async def run(settings: Settings) -> None:
             finally:
                 if relay_task is not None:
                     await relay_task
+                if metrics_task is not None:
+                    stop.set()
+                    await metrics_task
     finally:
         await redis.aclose()
         await pool.close()
         await engine.dispose()
 
 
+async def serve_metrics(port: int, stop: asyncio.Event) -> None:
+    """Tiny HTTP responder for the worker's in-process metrics (GET anything)."""
+
+    async def handle(
+        reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        try:
+            await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 5)
+            body = metrics.render().encode()
+            writer.write(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\n"
+                b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body
+            )
+            await writer.drain()
+        except (TimeoutError, asyncio.IncompleteReadError, ConnectionError):
+            pass
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(handle, "0.0.0.0", port)
+    async with server:
+        await stop.wait()
+
+
 def main() -> int:
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
-    )
-    asyncio.run(run(get_settings()))
+    settings = get_settings()
+    configure_logging(settings.log_format, settings.log_level)
+    log.info("langsmith tracing %s", "on" if setup_tracing() else "off")
+    asyncio.run(run(settings))
     return 0

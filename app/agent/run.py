@@ -20,6 +20,8 @@ from app.agent.graph import build_graph
 from app.agent.tools.registry import make_conn_factory
 from app.config import get_settings
 from app.db.copy import conninfo
+from app.observability.logging import configure_logging
+from app.observability.tracing import setup_tracing
 from app.synth.embeddings import OpenAIEmbedder
 
 
@@ -40,6 +42,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     s = get_settings()
+    configure_logging(s.log_format, s.log_level)
+    setup_tracing()
     if not s.openai_api_key:
         parser.error("OPENAI_API_KEY is not set (see .env.example)")
 

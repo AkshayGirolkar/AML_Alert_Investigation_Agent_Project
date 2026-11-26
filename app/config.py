@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     llm_backoff_max_seconds: float = 20.0
     llm_case_budget_usd: float = 1.0  # 0 = no cap; over it the case goes to a human
 
+    # F13 observability
+    log_format: str = "text"  # "json" for structured logs (docker/ECS)
+    log_level: str = "INFO"
+    worker_metrics_port: int = 0  # >0: the worker serves /metrics on this port
+
     # F10.5 console contract: restricted DB role for the separate console, and the relay
     # that turns its `console.requests` rows into investigations and decisions.
     console_db_password: str | None = None  # None = the console_app role cannot log in
