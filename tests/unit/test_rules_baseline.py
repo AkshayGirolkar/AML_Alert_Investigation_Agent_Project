@@ -1,6 +1,7 @@
 """Unit tests for F04 baseline metric math and typology labeling (no DB)."""
 
 import pytest
+
 from app.rules.baseline import BaselineReport, Metrics, compute_metrics, format_report
 from app.rules.labeling import pick_typology
 

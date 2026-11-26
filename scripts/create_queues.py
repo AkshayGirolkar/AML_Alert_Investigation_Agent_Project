@@ -7,7 +7,7 @@ from app.messaging.sqs import ensure_queues
 
 
 def main() -> int:
-    url, dlq = asyncio.run(ensure_queues(get_settings()))
+    url, dlq = asyncio.run(ensure_queues(get_settings(), create=True))
     print(f"queue: {url}\ndlq:   {dlq}")
     return 0
 
