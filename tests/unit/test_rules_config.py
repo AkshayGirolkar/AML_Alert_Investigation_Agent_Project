@@ -1,9 +1,9 @@
 """Unit tests for F04 rule thresholds (no DB, no network)."""
 
 import pytest
-from app.rules.config import ALL_RULE_IDS, RuleConfig
 
 from app.config import Settings
+from app.rules.config import ALL_RULE_IDS, RuleConfig
 
 
 def test_all_rule_ids_are_the_six_alert_kinds() -> None:
