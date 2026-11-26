@@ -1,0 +1,624 @@
+{
+  "items": [
+    {
+      "alert_id": 36332,
+      "rule_id": "high_velocity",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 37178,
+      "rule_id": "high_velocity",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 37248,
+      "rule_id": "high_velocity",
+      "truth": true,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 38120,
+      "rule_id": "high_velocity",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 38598,
+      "rule_id": "high_velocity",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 38951,
+      "rule_id": "high_velocity",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 39268,
+      "rule_id": "high_velocity",
+      "truth": true,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 39632,
+      "rule_id": "high_velocity",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 40191,
+      "rule_id": "high_velocity",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 40513,
+      "rule_id": "high_velocity",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 41240,
+      "rule_id": "fan_out",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 41961,
+      "rule_id": "fan_out",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 43267,
+      "rule_id": "fan_out",
+      "truth": true,
+      "truth_typology": "STACK"
+    },
+    {
+      "alert_id": 43757,
+      "rule_id": "fan_out",
+      "truth": true,
+      "truth_typology": "BIPARTITE"
+    },
+    {
+      "alert_id": 44117,
+      "rule_id": "fan_out",
+      "truth": true,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 44243,
+      "rule_id": "fan_out",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 44875,
+      "rule_id": "fan_out",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 45613,
+      "rule_id": "fan_out",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 45977,
+      "rule_id": "fan_out",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 46255,
+      "rule_id": "fan_out",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 46405,
+      "rule_id": "fan_out",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 47708,
+      "rule_id": "fan_out",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 49532,
+      "rule_id": "fan_in",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 49776,
+      "rule_id": "fan_in",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 49939,
+      "rule_id": "fan_in",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 50309,
+      "rule_id": "fan_in",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 50441,
+      "rule_id": "fan_in",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 51183,
+      "rule_id": "fan_in",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 51816,
+      "rule_id": "fan_in",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 51971,
+      "rule_id": "fan_in",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 52120,
+      "rule_id": "fan_in",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 52220,
+      "rule_id": "round_trip",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 52258,
+      "rule_id": "round_trip",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 52308,
+      "rule_id": "round_trip",
+      "truth": true,
+      "truth_typology": "RANDOM"
+    },
+    {
+      "alert_id": 52311,
+      "rule_id": "round_trip",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 52402,
+      "rule_id": "round_trip",
+      "truth": true,
+      "truth_typology": "SCATTER-GATHER"
+    },
+    {
+      "alert_id": 52452,
+      "rule_id": "round_trip",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 52639,
+      "rule_id": "round_trip",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 52828,
+      "rule_id": "round_trip",
+      "truth": true,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 52996,
+      "rule_id": "round_trip",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 53115,
+      "rule_id": "round_trip",
+      "truth": true,
+      "truth_typology": "BIPARTITE"
+    },
+    {
+      "alert_id": 53118,
+      "rule_id": "round_trip",
+      "truth": true,
+      "truth_typology": "SCATTER-GATHER"
+    },
+    {
+      "alert_id": 53370,
+      "rule_id": "round_trip",
+      "truth": true,
+      "truth_typology": "FAN-IN"
+    },
+    {
+      "alert_id": 53379,
+      "rule_id": "round_trip",
+      "truth": true,
+      "truth_typology": "GATHER-SCATTER"
+    },
+    {
+      "alert_id": 53578,
+      "rule_id": "round_trip",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 53645,
+      "rule_id": "round_trip",
+      "truth": true,
+      "truth_typology": "FAN-OUT"
+    },
+    {
+      "alert_id": 53655,
+      "rule_id": "round_trip",
+      "truth": true,
+      "truth_typology": "GATHER-SCATTER"
+    },
+    {
+      "alert_id": 53659,
+      "rule_id": "round_trip",
+      "truth": true,
+      "truth_typology": "FAN-IN"
+    },
+    {
+      "alert_id": 53676,
+      "rule_id": "round_trip",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 53984,
+      "rule_id": "structuring",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 53987,
+      "rule_id": "structuring",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 53992,
+      "rule_id": "structuring",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 54002,
+      "rule_id": "structuring",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 54004,
+      "rule_id": "structuring",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 54011,
+      "rule_id": "structuring",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 54012,
+      "rule_id": "structuring",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 54015,
+      "rule_id": "structuring",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 59049,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "GATHER-SCATTER"
+    },
+    {
+      "alert_id": 61066,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "BIPARTITE"
+    },
+    {
+      "alert_id": 61988,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "FAN-IN"
+    },
+    {
+      "alert_id": 62035,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "FAN-OUT"
+    },
+    {
+      "alert_id": 62073,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "RANDOM"
+    },
+    {
+      "alert_id": 64683,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "RANDOM"
+    },
+    {
+      "alert_id": 65273,
+      "rule_id": "high_risk_counterparty",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 66313,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "STACK"
+    },
+    {
+      "alert_id": 71417,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "CYCLE"
+    },
+    {
+      "alert_id": 71766,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "FAN-OUT"
+    },
+    {
+      "alert_id": 74576,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "GATHER-SCATTER"
+    },
+    {
+      "alert_id": 77365,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "BIPARTITE"
+    },
+    {
+      "alert_id": 79840,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "CYCLE"
+    },
+    {
+      "alert_id": 80988,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "FAN-IN"
+    },
+    {
+      "alert_id": 82104,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "CYCLE"
+    },
+    {
+      "alert_id": 83291,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "FAN-OUT"
+    },
+    {
+      "alert_id": 89549,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "BIPARTITE"
+    },
+    {
+      "alert_id": 94198,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "CYCLE"
+    },
+    {
+      "alert_id": 106318,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "RANDOM"
+    },
+    {
+      "alert_id": 108543,
+      "rule_id": "high_risk_counterparty",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 110025,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "SCATTER-GATHER"
+    },
+    {
+      "alert_id": 115397,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "CYCLE"
+    },
+    {
+      "alert_id": 118263,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "RANDOM"
+    },
+    {
+      "alert_id": 129752,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "FAN-IN"
+    },
+    {
+      "alert_id": 132342,
+      "rule_id": "high_risk_counterparty",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 137677,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "BIPARTITE"
+    },
+    {
+      "alert_id": 143230,
+      "rule_id": "high_risk_counterparty",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 148765,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "GATHER-SCATTER"
+    },
+    {
+      "alert_id": 148766,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "GATHER-SCATTER"
+    },
+    {
+      "alert_id": 152026,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "CYCLE"
+    },
+    {
+      "alert_id": 156115,
+      "rule_id": "high_risk_counterparty",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 163058,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "SCATTER-GATHER"
+    },
+    {
+      "alert_id": 164594,
+      "rule_id": "high_risk_counterparty",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 166115,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "FAN-IN"
+    },
+    {
+      "alert_id": 169862,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "STACK"
+    },
+    {
+      "alert_id": 170325,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 172584,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "SCATTER-GATHER"
+    },
+    {
+      "alert_id": 176643,
+      "rule_id": "high_risk_counterparty",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 187617,
+      "rule_id": "high_risk_counterparty",
+      "truth": false,
+      "truth_typology": null
+    },
+    {
+      "alert_id": 191310,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "STACK"
+    },
+    {
+      "alert_id": 195456,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "FAN-OUT"
+    },
+    {
+      "alert_id": 199480,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "FAN-OUT"
+    },
+    {
+      "alert_id": 208468,
+      "rule_id": "high_risk_counterparty",
+      "truth": true,
+      "truth_typology": "STACK"
+    }
+  ],
+  "name": "eval-100",
+  "seed": 42,
+  "size": 100,
+  "strata": {
+    "false:fan_in": 9,
+    "false:fan_out": 9,
+    "false:high_risk_counterparty": 8,
+    "false:high_velocity": 8,
+    "false:round_trip": 8,
+    "false:structuring": 8,
+    "true:BIPARTITE": 6,
+    "true:CYCLE": 6,
+    "true:FAN-IN": 6,
+    "true:FAN-OUT": 6,
+    "true:GATHER-SCATTER": 6,
+    "true:RANDOM": 5,
+    "true:SCATTER-GATHER": 5,
+    "true:STACK": 5,
+    "true:UNTYPED": 5
+  }
+}
