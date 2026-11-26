@@ -7,6 +7,16 @@ x-app-env: &app-env
   AWS_SECRET_ACCESS_KEY: test
   AWS_REGION: us-east-1
   REDIS_URL: redis://redis:6379/0
+  # F16 load test knobs: set in the shell or .env, e.g. LLM_PROVIDER=fake docker compose up -d
+  LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+  FAKE_LLM_LATENCY_MS: ${FAKE_LLM_LATENCY_MS:-1500}
+  FAKE_LLM_JITTER_MS: ${FAKE_LLM_JITTER_MS:-0}
+  FAKE_LLM_ERROR_RATE: ${FAKE_LLM_ERROR_RATE:-0.0}
+  FAKE_LLM_ESCALATE_PCT: ${FAKE_LLM_ESCALATE_PCT:-30}
+  WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+  WORKER_DB_POOL_SIZE: ${WORKER_DB_POOL_SIZE:-0}
+  LLM_RATE_LIMIT_PER_SECOND: ${LLM_RATE_LIMIT_PER_SECOND:-5.0}
+  LLM_RATE_LIMIT_BURST: ${LLM_RATE_LIMIT_BURST:-10}
 
 services:
   postgres:
@@ -92,6 +102,23 @@ services:
     image: aml-app
     container_name: aml-worker
     restart: unless-stopped
+    env_file: .env
+    environment: *app-env
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      localstack:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # F16: a second worker for the 1-vs-2-workers sweep. Off by default:
+  #   docker compose --profile scale up -d worker worker2
+  worker2:
+    image: aml-app
+    container_name: aml-worker-2
+    profiles: ["scale"]
     env_file: .env
     environment: *app-env
     command: ["python", "-m", "app.worker"]

@@ -28,9 +28,9 @@ async def sanctions_screen(
 
 
 async def _search(cur: Any, name: str, min_similarity: float) -> list[dict[str, Any]]:
-    """Name (trigram index) and alias (scan) search; the part the F10 cache absorbs."""
-    # `name % q` uses the GIN trigram index at the session limit; we set it for this
-    # call and restore it, so a pooled connection is left as we found it.
+    """Name and alias search, both on trigram GIN indexes; the part the F10 cache absorbs."""
+    # `x % q` uses the GIN trigram index at the session limit; we set it for these
+    # queries and restore it, so a pooled connection is left as we found it.
     await cur.execute("SELECT show_limit() AS lim")
     previous = await cur.fetchone()
     assert previous is not None
@@ -48,19 +48,21 @@ async def _search(cur: Any, name: str, min_similarity: float) -> list[dict[str, 
             r["source_id"]: {**r, "matched_on": "name", "matched_text": r["name"]}
             for r in await cur.fetchall()
         }
+        # F16: aliases live in `sanctions_aliases` (migration 0010, trigger-maintained)
+        # with a trigram index; the old unnest-and-scan took ~2.7 s per screening.
+        await cur.execute(
+            """
+            SELECT s.source_id, s.name, s.schema_type, s.countries, s.dataset,
+                   a.alias AS matched_text, similarity(a.alias, %(q)s) AS sim
+            FROM sanctions_aliases a JOIN sanctions_entities s USING (source_id)
+            WHERE a.alias %% %(q)s AND similarity(a.alias, %(q)s) >= %(t)s""",
+            {"q": name, "t": min_similarity},
+        )
+        alias_rows = await cur.fetchall()
     finally:
         with contextlib.suppress(psycopg.Error):
             await cur.execute("SELECT set_limit(%s::real)", (previous["lim"],))
-    # Aliases have no index, so this is a scan.
-    await cur.execute(
-        """
-        SELECT s.source_id, s.name, s.schema_type, s.countries, s.dataset,
-               al.alias AS matched_text, similarity(al.alias, %(q)s) AS sim
-        FROM sanctions_entities s CROSS JOIN LATERAL unnest(s.aliases) AS al(alias)
-        WHERE similarity(al.alias, %(q)s) >= %(t)s""",
-        {"q": name, "t": min_similarity},
-    )
-    for r in await cur.fetchall():
+    for r in alias_rows:
         best = hits.get(r["source_id"])
         if best is None or r["sim"] > best["sim"]:
             hits[r["source_id"]] = {**r, "matched_on": "alias"}

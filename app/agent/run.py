@@ -22,7 +22,7 @@ from app.config import get_settings
 from app.db.copy import conninfo
 from app.observability.logging import configure_logging
 from app.observability.tracing import setup_tracing
-from app.synth.embeddings import OpenAIEmbedder
+from app.synth.embeddings import FakeEmbedder, OpenAIEmbedder
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -44,7 +44,8 @@ def main(argv: list[str] | None = None) -> int:
     s = get_settings()
     configure_logging(s.log_format, s.log_level)
     setup_tracing()
-    if not s.openai_api_key:
+    fake = s.llm_provider == "fake"  # F16: synthetic LLM, no OpenAI key needed
+    if not fake and not s.openai_api_key:
         parser.error("OPENAI_API_KEY is not set (see .env.example)")
 
     recorder = MemoryRecorder()
@@ -58,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
             assess_llm=build_gateway(
                 s, "assess", s.llm_assess_model, s.llm_fallback_assess_model, recorder
             ),
-            embedder=OpenAIEmbedder(s.openai_api_key),
+            embedder=FakeEmbedder() if fake else OpenAIEmbedder(s.openai_api_key),
             settings=s,
             checkpointer=MemorySaver(),
             store=store,

@@ -31,7 +31,7 @@ from app.redis_client import make_redis
 from app.services.events import EventPublisher
 from app.services.rate_limiter import RedisTokenBucket
 from app.services.sanctions_cache import SanctionsCache
-from app.synth.embeddings import OpenAIEmbedder
+from app.synth.embeddings import FakeEmbedder, OpenAIEmbedder
 from app.worker.console_relay import ConsoleRelay
 from app.worker.processor import Processor
 
@@ -69,7 +69,8 @@ async def poll_loop(
 
 
 async def run(settings: Settings) -> None:
-    if not settings.openai_api_key:
+    fake = settings.llm_provider == "fake"  # F16 load test: no OpenAI needed
+    if not fake and not settings.openai_api_key:
         raise SystemExit("OPENAI_API_KEY is not set (see .env.example)")
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -80,6 +81,8 @@ async def run(settings: Settings) -> None:
     pool = AsyncConnectionPool(
         conninfo(settings.sync_database_url),
         kwargs={"autocommit": True, "row_factory": dict_row},
+        min_size=settings.db_pool_size,
+        max_size=settings.db_pool_size,
         open=False,
     )
     await pool.open()
@@ -95,7 +98,6 @@ async def run(settings: Settings) -> None:
     recorder = SqlUsageRecorder(engine)
 
     def llm(node: str, model: str, fallback: str) -> LLM:
-        assert settings.openai_api_key
         return build_gateway(settings, node, model, fallback, recorder, limiter)
 
     try:
@@ -111,7 +113,9 @@ async def run(settings: Settings) -> None:
             assess_llm=llm(
                 "assess", settings.llm_assess_model, settings.llm_fallback_assess_model
             ),
-            embedder=OpenAIEmbedder(settings.openai_api_key),
+            embedder=(
+                FakeEmbedder() if fake else OpenAIEmbedder(settings.openai_api_key)
+            ),
             settings=settings,
             checkpointer=checkpointer,
             store=store,
@@ -128,7 +132,11 @@ async def run(settings: Settings) -> None:
                 events=EventPublisher(redis, settings.events_ttl_seconds),
                 lock_ttl=settings.case_lock_ttl_seconds,
             )
-            log.info("worker started (concurrency=%d)", settings.worker_concurrency)
+            log.info(
+                "worker started (concurrency=%d, db pool=%d)",
+                settings.worker_concurrency,
+                settings.db_pool_size,
+            )
             metrics_task: asyncio.Task[None] | None = None
             if settings.worker_metrics_port > 0:
                 metrics_task = asyncio.create_task(
