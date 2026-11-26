@@ -25,7 +25,7 @@ The agent removes 25.0% of the analyst workload and lets 12.0% of true alerts th
 - **One model pair and one run.** Confidence intervals are wide (n = 50 true alerts); per-typology rows have 5-6 alerts each.
 - **Load numbers use a fake LLM on a laptop.** See below.
 - **AWS:** the Terraform is code-complete and validated in CI but has not been applied to a real account, so there are no deployed-stack numbers.
-- **The analyst console (F14) is a separate project and is not built.** Analysts use the API (Swagger UI at `/docs`).
+- **The analyst console (F14) is a separate project** (the separate `aml-console` repo, React + Node, shares only the database through [`docs/console-contract.md`](docs/console-contract.md)). It is not in this repo and not deployed; the API and Swagger UI (`/docs`) work without it.
 
 ## Architecture
 
