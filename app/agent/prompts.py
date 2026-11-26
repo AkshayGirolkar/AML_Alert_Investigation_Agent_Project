@@ -3,6 +3,8 @@
 import json
 from typing import Any
 
+from app.agent.routing import structure_facts
+
 PLAN_SYSTEM = """You are an AML investigator planning checks for one transaction-monitoring alert.
 Choose up to {max_calls} checks from these tools and give each tool's arguments:
 {tools}
@@ -34,9 +36,23 @@ If PRIOR HISTORY is shown, weigh it (a customer cleared before for the same acti
 more likely benign; one with an approved SAR deserves more scrutiny), but it is context,
 not evidence: never cite it in `evidence_ids`, and never let it replace the evidence.
 
-risk_score and confidence are between 0 and 1. Set `typology` only when the evidence shows
-the structure of a pattern (e.g. FAN-OUT, FAN-IN, CYCLE, SCATTER-GATHER, STACK); do not
-just repeat the rule's name. Otherwise use null."""
+risk_score and confidence are between 0 and 1.
+
+`typology` names the laundering pattern, as one of FAN-OUT, FAN-IN, CYCLE, SCATTER-GATHER,
+GATHER-SCATTER, STACK, BIPARTITE, RANDOM, or null. Do not just repeat the rule's name: the
+same rule fires on every pattern. STRUCTURE FACTS give the flow shape; use them:
+- FAN-OUT: `flow` is "outgoing-heavy" and `distinct_counterparties` is at least 4.
+- FAN-IN: `flow` is "incoming-heavy" and `distinct_counterparties` is at least 4.
+- CYCLE: `network_cycles` is above 0.
+- SCATTER-GATHER, GATHER-SCATTER, STACK, BIPARTITE, RANDOM: only the second-hop structure
+  separates these, so name one only when the edges in the network evidence clearly show it
+  (SCATTER-GATHER: out to several intermediaries that pay on to one receiver;
+  GATHER-SCATTER: in from several senders, out to several receivers; STACK: a chain of
+  single hand-offs; BIPARTITE: one group paying another; RANDOM: a tangle with no shape).
+  A thin footprint (a few transactions, one or two counterparties) fits none of them.
+When no description is clearly met, use null. A wrong pattern is worse than null, and a
+closure always has null. Never infer a pattern from the rule name or from sanctions or
+media results."""
 
 SAR_SYSTEM = """Draft a short suspicious activity report narrative for an analyst to review.
 Use ONLY the evidence provided, cite the evidence_ids you rely on, and do not do arithmetic.
@@ -84,6 +100,15 @@ def evidence_block(evidence: list[dict[str, Any]]) -> str:
     )
 
 
+def facts_block(facts: dict[str, Any] | None) -> str:
+    if not facts:
+        return ""
+    return (
+        "\n\nSTRUCTURE FACTS (counted in code from the evidence below; use them to pick "
+        f"`typology`, they are not citable):\n{_dump(facts)}"
+    )
+
+
 def assess_user(
     alert: dict[str, Any],
     kyc: dict[str, Any] | None,
@@ -93,7 +118,8 @@ def assess_user(
 ) -> str:
     text = (
         f"ALERT:\n{_dump(alert_view(alert))}\n\nKYC PROFILE:\n{_dump(kyc)}"
-        f"{history_block(history)}\n\nEVIDENCE:\n{evidence_block(evidence)}"
+        f"{history_block(history)}{facts_block(structure_facts(evidence))}"
+        f"\n\nEVIDENCE:\n{evidence_block(evidence)}"
     )
     if feedback:
         text += "\n\nYOUR PREVIOUS ANSWER WAS REJECTED:\n" + "\n".join(feedback)

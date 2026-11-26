@@ -70,6 +70,8 @@ F11 (auth): `app/auth/` verifies bearer JWTs (RS256 via `AUTH_JWKS_URL` for Cogn
 
 F18 (portfolio polish): docs only. `README.md` leads with the eval result; evidence is copied into tracked `docs/results/` and `docs/img/` (the originals in `eval/runs`/`eval/reports` are gitignored), and `tests/unit/test_docs.py` checks doc links and that README headline numbers match `docs/results/eval-full-100-v1.json`, so after a new eval run refresh those files and the README together. Indexes: `docs/adr/README.md`, `docs/features/README.md`; diagrams `docs/architecture.md`; walkthrough `docs/demo.md` (fake LLM, free; recording still pending). See `docs/features/F18-portfolio-polish.md`.
 
+F19 (typology): `Verdict.typology` is a closed `Typology` literal; read stored verdicts with `Verdict.from_state` (maps legacy free text). `routing.structure_facts` counts flow shape in code for the assess prompt. `eval/datasets/tune-100.json` (built with `--exclude eval-100`) is the set for prompt iteration; `eval-100` is confirmation only and has now been seen twice, so a new split is needed before any further tuning. `scripts.typology_feasibility` shows which patterns the tools can separate. `eval/fixtures/recorded_run.json` and `docs/results/eval-full-100-v2.*` hold the current run; refresh them with the README. See `docs/adr/0012-f19-typology-prompt.md`.
+
 Not built yet: `pyproject.toml`.
 
 Required env in `.env` (never commit): `OPENAI_API_KEY`, `LANGSMITH_API_KEY`, `LANGSMITH_TRACING=true`, optional `ANTHROPIC_API_KEY`. Kaggle download needs `~/.kaggle/kaggle.json`.

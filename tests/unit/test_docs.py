@@ -10,7 +10,7 @@ from app.eval.report import pct
 from app.eval.store import read_run_file
 
 ROOT = Path(__file__).resolve().parents[2]
-RUN = ROOT / "docs" / "results" / "eval-full-100-v1.json"
+RUN = ROOT / "docs" / "results" / "eval-full-100-v2.json"
 DOCS = [ROOT / "README.md", *sorted((ROOT / "docs").rglob("*.md"))]
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 

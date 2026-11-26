@@ -16,7 +16,13 @@ from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
 from app.agent.llm import Message, T, Usage
-from app.agent.schemas import InvestigationPlan, PlannedCheck, SarDraft, Verdict
+from app.agent.schemas import (
+    InvestigationPlan,
+    PlannedCheck,
+    SarDraft,
+    Typology,
+    Verdict,
+)
 
 MODEL = "synthetic-llm"
 _ALERT_ID = re.compile(r'"alert_id":\s*(\d+)')
@@ -27,7 +33,13 @@ _PLAN_TOOLS = (
     "sanctions_screen",
     "peer_comparison",
 )
-_TYPOLOGIES = ("FAN-OUT", "FAN-IN", "CYCLE", "SCATTER-GATHER", "STACK")
+_TYPOLOGIES: tuple[Typology, ...] = (
+    "FAN-OUT",
+    "FAN-IN",
+    "CYCLE",
+    "SCATTER-GATHER",
+    "STACK",
+)
 
 
 class SyntheticError(ConnectionError):

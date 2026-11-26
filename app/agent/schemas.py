@@ -4,6 +4,18 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# The IBM patterns vocabulary (same names the scorer uses, app/eval/typology.py).
+Typology = Literal[
+    "FAN-OUT",
+    "FAN-IN",
+    "CYCLE",
+    "SCATTER-GATHER",
+    "GATHER-SCATTER",
+    "STACK",
+    "BIPARTITE",
+    "RANDOM",
+]
+
 ToolName = Literal[
     "query_transactions",
     "counterparty_network",
@@ -34,8 +46,9 @@ class Verdict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     disposition: Literal["close", "escalate"]
-    typology: str | None = Field(
-        default=None, description="Laundering pattern name, or null if none."
+    typology: Typology | None = Field(
+        default=None,
+        description="Closest laundering pattern from the allowed names, or null.",
     )
     risk_score: float = Field(ge=0.0, le=1.0)
     confidence: float = Field(ge=0.0, le=1.0)
@@ -44,6 +57,19 @@ class Verdict(BaseModel):
         description="IDs of the evidence records that support the verdict.",
     )
     rationale: str = Field(default="", description="Short reasoning for the analyst.")
+
+    @classmethod
+    def from_state(cls, data: dict[str, Any] | None) -> "Verdict":
+        """Read a verdict stored in graph state or a checkpoint.
+
+        Verdicts written before F19 carry free-text typologies; map those to the closed
+        set (or null) instead of failing a case that is resuming after a deploy.
+        """
+        from app.eval.typology import normalize_typology
+
+        fixed = dict(data or {})
+        fixed["typology"] = normalize_typology(fixed.get("typology"))
+        return cls.model_validate(fixed)
 
 
 class SarDraft(BaseModel):

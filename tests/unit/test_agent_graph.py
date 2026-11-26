@@ -423,3 +423,63 @@ async def test_budget_exceeded_in_assess_escalates_without_retry() -> None:
     out = await nodes.draft_sar(state)
     assert out["outcome"] == "escalated"
     assert out["escalation_reason"] == "no verdict"
+
+
+def test_typology_is_a_closed_set_and_old_values_still_load() -> None:
+    """F19: the LLM schema rejects unknown names; stored legacy verdicts are mapped."""
+    from typing import get_args
+
+    import pytest
+    from pydantic import ValidationError
+
+    from app.agent.prompts import ASSESS_SYSTEM
+    from app.agent.schemas import Typology, Verdict
+
+    base = {
+        "disposition": "escalate",
+        "risk_score": 0.8,
+        "confidence": 0.8,
+        "evidence_ids": [],
+    }
+    assert Verdict.model_validate({**base, "typology": "FAN-OUT"}).typology == "FAN-OUT"
+    assert Verdict.model_validate({**base, "typology": None}).typology is None
+    with pytest.raises(ValidationError):
+        Verdict.model_validate({**base, "typology": "layering"})
+    assert Verdict.from_state({**base, "typology": "fan out"}).typology == "FAN-OUT"
+    assert Verdict.from_state({**base, "typology": "layering"}).typology is None
+    for name in get_args(Typology):
+        assert name in ASSESS_SYSTEM, name
+
+
+def test_structure_facts_counts_flow_from_evidence() -> None:
+    from app.agent.routing import structure_facts
+
+    ev = [
+        {
+            "evidence_id": "query_transactions:abc",
+            "tool": "query_transactions",
+            "status": "ok",
+            "data": {
+                "direction": "both",
+                "outgoing_count": 9,
+                "incoming_count": 1,
+                "distinct_counterparties": 6,
+            },
+        },
+        {
+            "evidence_id": "counterparty_network:def",
+            "tool": "counterparty_network",
+            "status": "ok",
+            "data": {
+                "root_degree": 4,
+                "nodes": [{"hop": 1}, {"hop": 1}, {"hop": 2}],
+                "cycles_through_account": [],
+            },
+        },
+        {"tool": "query_transactions", "status": "error", "data": {}},
+    ]
+    f = structure_facts(ev)
+    assert f["flow"] == "outgoing-heavy" and f["distinct_counterparties"] == 6
+    assert f["network_direct"] == 2 and f["network_second_hop"] == 1
+    assert f["network_cycles"] == 0
+    assert structure_facts([]) == {}

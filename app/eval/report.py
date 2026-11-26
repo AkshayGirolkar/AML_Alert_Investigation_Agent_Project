@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from app.eval.baseline import Comparison
-from app.eval.metrics import EvalMetrics, GroupMetrics, ResultRow
+from app.eval.metrics import EvalMetrics, GroupMetrics, ResultRow, typology_confusion
 from app.eval.store import RunInfo
 
 
@@ -27,8 +27,24 @@ def _secs(x: float | None) -> str:
 def _group_line(name: str, g: GroupMetrics) -> str:
     return (
         f"| {name} | {g.true_alerts} | {pct(g.recall)}{_ci(g.recall_ci)} | "
-        f"{pct(g.false_closure_rate)} | {pct(g.typology_accuracy)} |"
+        f"{pct(g.false_closure_rate)} | {pct(g.typology_accuracy)} | "
+        f"{pct(g.typology_named_rate)} | {pct(g.typology_accuracy_when_named)} |"
     )
+
+
+def _confusion_lines(rows: Sequence[ResultRow]) -> list[str]:
+    conf = typology_confusion(rows)
+    if not conf:
+        return []
+    lines = [
+        "## Typology confusion (escalated true alerts)",
+        "",
+        "| True typology | Named by the agent |",
+        "|---|---|",
+    ]
+    for true, named in conf.items():
+        lines.append(f"| {true} | {', '.join(f'{k} x{v}' for k, v in named.items())} |")
+    return [*lines, ""]
 
 
 def render_report(
@@ -88,6 +104,7 @@ def render_report(
             "where the agent named a pattern at all."
         ),
         "",
+        *_confusion_lines(rows),
         "## Quality, cost and latency",
         "",
         (

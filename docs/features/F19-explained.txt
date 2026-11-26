@@ -1,0 +1,47 @@
+F19 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+When the agent escalates an alert it should also say which laundering pattern it
+sees (fan-out, cycle, and so on), because the IBM dataset records the true
+pattern and the project scores the agent against it.
+
+2. THE PROBLEM
+--------------
+The first run scored 0% on this. The prompt told the model to say "unknown" unless
+the pattern was obvious, and the answer was free text.
+
+3. WHAT F19 DID
+---------------
+- Built a second 100-alert set (tune-100) that shares no alert with eval-100, so
+  the prompt could be adjusted without grading it on the answers it was tuned to.
+- Checked first, with no AI calls, whether the data even separates the patterns.
+  It mostly does not: an alert shows one account's few transactions, while an IBM
+  pattern spans many accounts. Only fan-out stands out (money leaving to many
+  accounts).
+- Made the typology a fixed list of the 8 names (or none), and added counts worked
+  out in code (outgoing vs incoming, counterparties, cycles) so the model does not
+  count by eye.
+- Told the model to answer "none" when the evidence does not clearly match.
+
+4. RESULTS
+----------
+On the tuning set: 0% -> 7.3%. On the confirmation set (eval-100, run once): 0% ->
+2.6% (1 correct). The 25% target was not met. The model now names a pattern for
+about a fifth of escalated true alerts, and when it names FAN-OUT it is right.
+Recall went from 90% to 88% (94% to 92% on the tuning set); small, possibly noise,
+not proven either way. Cost about $7 of OpenAI calls in total.
+
+5. WHAT TO KNOW
+---------------
+- Old stored verdicts with free-text typologies are mapped to the list when read,
+  so cases mid-flight during a deploy do not fail.
+- The eval report table had a header with two columns the rows did not fill; fixed,
+  and a confusion table (true pattern vs named pattern) was added.
+- The replay fixture now holds the new run; the thresholds did not change.
+
+6. WHAT IS NOT DONE
+-------------------
+Naming the other five patterns needs facts about the whole laundering attempt (other
+accounts), which the tools do not give. That would be a new feature on a fresh split.
