@@ -13,3 +13,10 @@ eval/reports/
 loadtest/results/*
 !loadtest/results/.gitkeep
 !loadtest/results/example-*
+
+# F17 Terraform (the provider lock files are committed)
+infra/**/.terraform/
+infra/**/*.tfstate
+infra/**/*.tfstate.*
+infra/**/*.local.tfvars
+infra/**/crash.log
