@@ -57,29 +57,43 @@ async def sqs_client(settings: Settings) -> AsyncIterator[Any]:
         yield client
 
 
-async def ensure_queues(settings: Settings) -> tuple[str, str]:
-    """Create the DLQ and the main queue with a redrive policy. Idempotent.
+async def ensure_queues(
+    settings: Settings, create: bool | None = None
+) -> tuple[str, str]:
+    """Resolve (queue_url, dlq_url), creating the queues first when `create` is true.
 
-    Returns (queue_url, dlq_url).
+    `create` defaults to "only against a custom endpoint" (LocalStack): on real AWS
+    (`AWS_ENDPOINT_URL` unset) Terraform owns the queues, so they are looked up and the
+    task role needs no `sqs:CreateQueue`. Creating is idempotent.
     """
+    if create is None:
+        create = settings.aws_endpoint_url is not None
     async with sqs_client(settings) as sqs:
-        dlq = await sqs.create_queue(QueueName=settings.sqs_dlq_name)
-        dlq_url = dlq["QueueUrl"]
-        attrs = await sqs.get_queue_attributes(
-            QueueUrl=dlq_url, AttributeNames=["QueueArn"]
-        )
-        redrive = {
-            "deadLetterTargetArn": attrs["Attributes"]["QueueArn"],
-            "maxReceiveCount": settings.sqs_max_receive_count,
-        }
-        queue = await sqs.create_queue(
-            QueueName=settings.sqs_queue_name,
-            Attributes={
-                "VisibilityTimeout": str(settings.sqs_visibility_timeout),
-                "RedrivePolicy": json.dumps(redrive),
-            },
-        )
-        return queue["QueueUrl"], dlq_url
+        return await resolve_queues(sqs, settings, create)
+
+
+async def resolve_queues(sqs: Any, settings: Settings, create: bool) -> tuple[str, str]:
+    if not create:
+        dlq = await sqs.get_queue_url(QueueName=settings.sqs_dlq_name)
+        queue = await sqs.get_queue_url(QueueName=settings.sqs_queue_name)
+        return queue["QueueUrl"], dlq["QueueUrl"]
+    dlq = await sqs.create_queue(QueueName=settings.sqs_dlq_name)
+    dlq_url = dlq["QueueUrl"]
+    attrs = await sqs.get_queue_attributes(
+        QueueUrl=dlq_url, AttributeNames=["QueueArn"]
+    )
+    redrive = {
+        "deadLetterTargetArn": attrs["Attributes"]["QueueArn"],
+        "maxReceiveCount": settings.sqs_max_receive_count,
+    }
+    queue = await sqs.create_queue(
+        QueueName=settings.sqs_queue_name,
+        Attributes={
+            "VisibilityTimeout": str(settings.sqs_visibility_timeout),
+            "RedrivePolicy": json.dumps(redrive),
+        },
+    )
+    return queue["QueueUrl"], dlq_url
 
 
 class SqsQueue:
@@ -167,7 +181,7 @@ class SqsQueue:
 
 @asynccontextmanager
 async def open_queue(settings: Settings) -> AsyncIterator[SqsQueue]:
-    """Open a client and resolve the queue URL (creating the queues if missing)."""
+    """Open a client and resolve the queue URLs (created first only against LocalStack)."""
     url, dlq_url = await ensure_queues(settings)
     async with sqs_client(settings) as client:
         yield SqsQueue(client, url, dlq_url)

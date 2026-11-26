@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  POSTGRES_PASSWORD: ci-only
+  # Unit and replay tests never call OpenAI or AWS.
+  OPENAI_API_KEY: ""
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements.lock -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy .
+      # Unit tests plus integration tests that start Postgres/Redis/LocalStack with
+      # Testcontainers (Docker is available on ubuntu-latest).
+      - run: pytest -q
+
+  eval-gate:
+    # F15 replay mode: scores the recorded run against eval/thresholds.json, no LLM.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements.lock -r requirements-dev.txt
+      - run: python -m scripts.eval_gate --mode replay
+
+  docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
