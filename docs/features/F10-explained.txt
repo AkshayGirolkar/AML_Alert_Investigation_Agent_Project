@@ -1,0 +1,237 @@
+F10 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+After F09 the system can take an alert, investigate it with an AI agent, pause
+for a human analyst, resume, and remember the outcome. It works, but it is
+still a one-kitchen restaurant with no helpers:
+
+  - Every investigation asks the database the same sanctions question again,
+    even for a name it checked a minute ago.
+  - Several workers can call OpenAI at the same time, and nobody makes sure
+    together they stay under the rate limit.
+  - Two workers could end up on the same case.
+  - A person watching an investigation sees nothing until it is completely
+    done.
+
+The project plan gives these four jobs to Redis, a very fast in-memory store
+that all workers and the API can share. F10 adds it.
+
+
+2. THE PROBLEM F10 SOLVES
+-------------------------
+  - Wasted work. Screening a name against 66,000 sanctions entries is the
+    slowest tool. The answer only changes when the sanctions list changes.
+  - Rate limits. OpenAI limits requests per second for the whole account.
+    Each worker only knows about itself, so together they can go over.
+  - Double work. The database already stops two workers claiming one case,
+    but a worker that takes over a "stale" case could still race one that is
+    just slow.
+  - Silence. An investigation takes many seconds across about ten steps. The
+    analyst console (F14) needs live progress.
+  - And one hard requirement: Redis must never be able to break an
+    investigation. It is a helper, not a boss.
+
+
+3. HOW F10 SOLVES IT
+--------------------
+Think of the restaurant again. Redis is the whiteboard in the kitchen that
+every cook can see and write on.
+
+  Cache     "Sanctions check for Viktor Petrov: no match." The first cook who
+            checks writes the answer on the whiteboard. The next cook who
+            needs it reads it off instead of walking to the archive. Answers
+            wear off after an hour, and when the sanctions list is reloaded
+            the whole whiteboard section is declared out of date at once (a
+            version number goes up).
+
+  Limiter   A basket of tickets for "talk to OpenAI". It refills at a steady
+            rate (default 5 per second, burst up to 10). Before any AI call a
+            cook takes a ticket; if the basket is empty they wait a moment.
+            The basket is on the shared whiteboard, so all cooks draw from
+            the same one. If they wait too long (60 s) the call fails and is
+            retried later like any other failure.
+
+  Lock      A "this table is mine" sign. A worker hangs the sign on a case
+            before starting. Another worker who finds the sign leaves the
+            message in the queue and tries later. The sign wears off by
+            itself after 5 minutes, and the working cook renews it as part of
+            the existing heartbeat, so it never stays up for a dead worker.
+            Only the worker who hung it can take it down.
+
+  Progress  A running order-status board per case: "started", "plan done",
+            "tools done", "assess done", ..., "completed". The API serves it
+            as a live feed (server-sent events) at GET /cases/{id}/events.
+            The board keeps the last ~200 lines for an hour, so a viewer who
+            arrives late, or reconnects, can read what they missed. The feed
+            ends by itself when the case is completed, failed or waiting for
+            review.
+
+The AI itself is untouched. Rate limiting is a wrapper around the LLM
+("RateLimitedLLM") that takes a ticket and then calls the real one.
+
+
+4. FILES ADDED UNDER app/ AND tests/
+------------------------------------
+redis_client.py
+    Builds the shared Redis connection with short timeouts, so an outage
+    fails fast instead of hanging. (The wire to the whiteboard.)
+
+services/sanctions_cache.py
+    The cache plus bump_version() for invalidation. (The whiteboard section.)
+
+services/rate_limiter.py
+    The ticket basket. One small Lua script does "refill, then take a ticket"
+    as a single indivisible step inside Redis, using Redis's own clock, so
+    two workers cannot both take the last ticket and server clocks do not
+    matter.
+
+services/locks.py
+    The "this table is mine" sign: take, renew, release, owner-checked.
+
+services/events.py
+    The progress board: publish a line, read a line, format it for the feed.
+
+tests/unit/test_redis_services.py
+    Fast tests with an in-memory fake Redis (no server): cache hits, expiry,
+    invalidation, ticket basket limits, lock ownership, feed replay, Redis
+    down for every one of the four jobs.
+
+tests/integration/test_redis.py
+    Lock, ticket basket and cache against a real Redis.
+
+tests/integration/conftest.py
+    A shared "real Redis or skip" fixture.
+
+
+5. FILES CHANGED
+----------------
+agent/tools/sanctions.py
+    The database search moved into its own function, and the cache wraps it.
+    Only the search is cached, not the finished evidence, so one entry serves
+    any account holder with that name. Country and result count are applied
+    after reading, so they still work.
+
+agent/tools/registry.py, agent/graph.py
+    Pass the cache down to the sanctions tool. No cache means no change.
+
+agent/llm.py
+    Adds RateLimitedLLM.
+
+worker/main.py
+    Opens Redis, wraps both AI models with the limiter, passes the cache, the
+    lock settings and the progress publisher to the worker.
+
+worker/processor.py
+    Takes the case lock around each run, renews it in the heartbeat, releases
+    it at the end. Publishes progress. When progress is on, it runs the graph
+    in streaming mode and reads the final answer from the checkpoint. With no
+    publisher it works exactly as before.
+
+api/routes.py, main.py
+    The new events endpoint and a Redis connection for the API.
+
+scripts/load_sanctions.py
+    After reloading the sanctions list it bumps the cache version, so stale
+    answers can never be served. If Redis is not running it just says so.
+
+config.py, .env.example
+    Redis address and timeout, cache lifetime, rate and burst, max wait,
+    lock lifetime, feed lifetime.
+
+docker-compose.yml
+    A redis service with a health check; api and worker wait for it.
+
+requirements.txt, requirements-dev.txt, requirements.lock
+    redis; fakeredis (for tests); lock file regenerated.
+
+
+OTHER FILES ADDED OR CHANGED FOR F10
+------------------------------------
+docs/features/F10-redis.md   The spec: scope, interfaces, done-when.
+docs/adr/0004-f10-redis.md   Why the choices were made.
+CLAUDE.md                    Short notes on the Redis parts.
+
+
+6. A WORKED EXAMPLE
+-------------------
+  1. POST /alerts/36015/investigations creates case 9 and queues it.
+  2. A worker picks it up, hangs the sign "lock:case:9" and writes "started"
+     on the board.
+  3. Someone opens GET /cases/9/events. They first see "status: running",
+     then each step as it finishes: load_alert, load_kyc, recall_history,
+     plan, tool_loop, assess, validate_grounding, close_case, write_memory.
+  4. During plan and assess the worker takes OpenAI tickets from the shared
+     basket. During tool_loop the sanctions tool checks the whiteboard
+     first; on a first-ever lookup it queries Postgres and writes the answer.
+  5. The worker writes "status: completed", takes the sign down, and the feed
+     closes itself.
+  6. A second viewer who connects a minute later still sees all of it,
+     because the board is kept for an hour.
+  7. With Redis stopped: the case still completes. Tickets are not required,
+     the lock is skipped (the database claim still protects the case), the
+     cache is skipped, and progress lines are dropped.
+
+
+7. SAFETY RULES BUILT IN
+------------------------
+  - Redis is optional for correctness. Cache down: ask Postgres. Limiter
+    down: let the call through. Lock down: rely on the database claim.
+    Progress down: drop the line. Nothing about the verdict depends on it.
+  - The database stays the source of truth for who owns a case. The Redis
+    lock is a second belt.
+  - A lock can only be released or renewed by the worker that took it, so a
+    slow worker cannot remove someone else's sign.
+  - Cached sanctions answers expire (TTL) and are wiped on reload (version).
+  - Progress is sent from the worker, not from inside the graph. The review
+    step re-runs from its top when resumed, so it must not do side effects.
+  - No secrets or customer data go into progress events: only step names and
+    statuses.
+
+
+8. WHAT TESTING FOUND
+---------------------
+Unit tests with a fake Redis passed immediately, but the first run of the real
+Docker stack found a bug they could not: the live feed died after a few
+steps. The feed waited up to 15 seconds for news while the Redis connection
+gives up after 2 seconds, so every wait timed out. The wait is now always
+shorter than the connection timeout, and a test pins this. Lesson: fakes do
+not model timeouts, so real-service runs matter.
+
+Also verified on the real stack: a case that paused for review, a case that
+closed, replay of a finished case, and a case run with Redis switched off.
+
+
+9. WHERE THIS FITS
+------------------
+  F09 long-term memory  ->  F10 Redis (done)
+  ->  F11 auth and roles  ->  F12 LLM gateway  ->  F13 observability
+  ->  F14 analyst console (uses the live feed)
+
+F11 should protect the events endpoint (it is open until then). F12 builds on
+the limiter: it charges one ticket per request today, and cost and token
+tracking belong there. F14 is the main consumer of the feed.
+
+
+10. KNOWN LIMITATIONS
+---------------------
+  - There is NO per-customer lock. F09's notes said F10 would add one, but it
+    cannot: the window runs from recall_history to write_memory and includes
+    the wait for the analyst, which can be hours, and a lock that expires
+    cannot cover that. Two alerts on the same customer running at once still
+    do not see each other. Writes stay safe (one key per alert), only the
+    "see each other" part is missing.
+  - The limiter counts requests, not tokens, so one huge prompt costs the
+    same as a tiny one (F12).
+  - The events endpoint has no login (F11).
+  - Cached sanctions answers can be up to an hour old if the list is changed
+    some way other than scripts/load_sanctions.py.
+  - Progress is best effort. If Redis is down while an investigation runs,
+    that viewer's feed has gaps.
+  - Redis has no persistence configured in docker-compose. Restarting it
+    wipes the cache, the ticket basket, the locks and the progress feed. All
+    of these rebuild themselves.
+  - The integration tests flush the Redis they connect to, which on a dev
+    machine is the dev Redis.
+  - Failure warnings print full tracebacks, which is noisy when Redis is down.
