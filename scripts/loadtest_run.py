@@ -48,7 +48,7 @@ from app.loadtest.seed import LoadSet, eval_alert_ids, is_local, reset
 from app.messaging.sqs import open_queue
 from app.redis_client import make_redis
 
-CONTAINERS = ["aml-worker", "aml-api", "aml-postgres", "aml-redis"]
+CONTAINERS = ["aml-worker", "aml-worker-2", "aml-api", "aml-postgres", "aml-redis"]
 
 
 def _git_sha() -> str:
@@ -172,6 +172,8 @@ async def run(a: argparse.Namespace) -> int:
             "trim": a.trim,
             "hardware": f"{platform.machine()} {platform.system()}",
             "note": a.note,
+            "label": a.label,
+            "workers": a.workers,
         },
         "worker": cfg,
     }
@@ -215,6 +217,10 @@ def main() -> int:
     p.add_argument("--live", action="store_true", help="allow real OpenAI calls")
     p.add_argument("--max-cost-usd", type=float, default=None)
     p.add_argument("--note", default="", help="free text recorded with the run")
+    p.add_argument("--label", default="", help="short name used in sweep tables")
+    p.add_argument(
+        "--workers", type=int, default=1, help="worker containers (recorded)"
+    )
     p.add_argument("--force", action="store_true")
     p.add_argument("--eval-dataset", default="eval/datasets/eval-100.json")
     p.add_argument("--results-dir", default="loadtest/results")

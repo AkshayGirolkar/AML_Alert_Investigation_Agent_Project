@@ -1,0 +1,1190 @@
+{
+  "run_id": "20261126T102016-burst-1000",
+  "git_sha": "0f4ecf7",
+  "profile": "burst",
+  "outcome": "drained",
+  "params": {
+    "run": {
+      "profile": "burst",
+      "count": 1000,
+      "rate": null,
+      "enqueue_concurrency": 50,
+      "manifest": "loadtest/datasets/load-1000.json",
+      "trim": 0.1,
+      "hardware": "x86_64 Darwin",
+      "note": "sweep full-c32",
+      "label": "full-c32",
+      "workers": 1
+    },
+    "worker": {
+      "LLM_PROVIDER": "fake",
+      "FAKE_LLM_LATENCY_MS": "1500",
+      "FAKE_LLM_JITTER_MS": "0",
+      "FAKE_LLM_ERROR_RATE": "0.0",
+      "FAKE_LLM_ESCALATE_PCT": "30",
+      "WORKER_CONCURRENCY": "32",
+      "LLM_RATE_LIMIT_PER_SECOND": "1000",
+      "LLM_RATE_LIMIT_BURST": "1000"
+    }
+  },
+  "cases": 1000,
+  "finished": 1000,
+  "elapsed_seconds": 215.1663739681244,
+  "throughput_per_min": 278.85398119358854,
+  "steady_throughput_per_min": 286.8845226859752,
+  "latency": {
+    "e2e": {
+      "p50": 106.99410402774811,
+      "p95": 194.0765548825264,
+      "p99": 199.67269223213196,
+      "n": 1000
+    },
+    "queue_wait": {
+      "p50": 101.58392107486725,
+      "p95": 188.87436481714246,
+      "p99": 195.29744001150132,
+      "n": 1000
+    },
+    "run_time": {
+      "p50": 5.289687991142273,
+      "p95": 7.434315514564514,
+      "p99": 9.726296951770783,
+      "n": 1000
+    }
+  },
+  "api": {
+    "latency_ms": {
+      "p50": 729.7736399996211,
+      "p95": 939.7385110976757,
+      "p99": 1008.9248753036372,
+      "n": 1000
+    },
+    "requests": 1000,
+    "errors": 0,
+    "error_rate": 0.0
+  },
+  "failures": {
+    "errors": 0,
+    "unfinished": 0,
+    "redeliveries": 0,
+    "duplicates": 0,
+    "dlq": 0
+  },
+  "cost_usd": 0.973271,
+  "tokens": {
+    "input": 5853377,
+    "output": 158745
+  },
+  "samples": [
+    {
+      "t": 1795688417.390178,
+      "postgres": {
+        "active": 2,
+        "idle": 11,
+        "idle_in_tx": 0,
+        "lock_waits": 0,
+        "total": 13
+      },
+      "sqs": {
+        "queue": 0,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 0,
+        "clients": 1,
+        "used_memory": 8556760
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 107.76,
+          "mem_pct": 3.55
+        },
+        "aml-api": {
+          "cpu_pct": 105.9,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 190.14,
+          "mem_pct": 33.72
+        },
+        "aml-redis": {
+          "cpu_pct": 2.67,
+          "mem_pct": 0.48
+        }
+      }
+    },
+    {
+      "t": 1795688424.753587,
+      "postgres": {
+        "active": 25,
+        "idle": 17,
+        "idle_in_tx": 10,
+        "lock_waits": 0,
+        "total": 52
+      },
+      "sqs": {
+        "queue": 608,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 62,
+        "clients": 24,
+        "used_memory": 8966192
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 109.67,
+          "mem_pct": 3.6
+        },
+        "aml-api": {
+          "cpu_pct": 104.86,
+          "mem_pct": 2.75
+        },
+        "aml-postgres": {
+          "cpu_pct": 658.24,
+          "mem_pct": 35.63
+        },
+        "aml-redis": {
+          "cpu_pct": 4.23,
+          "mem_pct": 0.48
+        }
+      }
+    },
+    {
+      "t": 1795688432.306168,
+      "postgres": {
+        "active": 2,
+        "idle": 16,
+        "idle_in_tx": 0,
+        "lock_waits": 0,
+        "total": 18
+      },
+      "sqs": {
+        "queue": 968,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 145,
+        "clients": 24,
+        "used_memory": 9072592
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 107.26,
+          "mem_pct": 3.61
+        },
+        "aml-api": {
+          "cpu_pct": 0.2,
+          "mem_pct": 2.75
+        },
+        "aml-postgres": {
+          "cpu_pct": 364.43,
+          "mem_pct": 33.62
+        },
+        "aml-redis": {
+          "cpu_pct": 3.53,
+          "mem_pct": 0.48
+        }
+      }
+    },
+    {
+      "t": 1795688439.683558,
+      "postgres": {
+        "active": 3,
+        "idle": 16,
+        "idle_in_tx": 1,
+        "lock_waits": 0,
+        "total": 20
+      },
+      "sqs": {
+        "queue": 939,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 241,
+        "clients": 24,
+        "used_memory": 9163064
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 108.37,
+          "mem_pct": 3.61
+        },
+        "aml-api": {
+          "cpu_pct": 0.16,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 379.88,
+          "mem_pct": 33.63
+        },
+        "aml-redis": {
+          "cpu_pct": 6.6,
+          "mem_pct": 0.48
+        }
+      }
+    },
+    {
+      "t": 1795688447.051806,
+      "postgres": {
+        "active": 3,
+        "idle": 15,
+        "idle_in_tx": 5,
+        "lock_waits": 0,
+        "total": 23
+      },
+      "sqs": {
+        "queue": 902,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 185,
+        "clients": 24,
+        "used_memory": 9354680
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 122.94,
+          "mem_pct": 3.63
+        },
+        "aml-api": {
+          "cpu_pct": 18.27,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 374.71,
+          "mem_pct": 33.34
+        },
+        "aml-redis": {
+          "cpu_pct": 12.93,
+          "mem_pct": 0.48
+        }
+      }
+    },
+    {
+      "t": 1795688454.434131,
+      "postgres": {
+        "active": 7,
+        "idle": 14,
+        "idle_in_tx": 6,
+        "lock_waits": 0,
+        "total": 27
+      },
+      "sqs": {
+        "queue": 871,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 140,
+        "clients": 24,
+        "used_memory": 9462712
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 106.96,
+          "mem_pct": 3.65
+        },
+        "aml-api": {
+          "cpu_pct": 0.17,
+          "mem_pct": 2.75
+        },
+        "aml-postgres": {
+          "cpu_pct": 471.61,
+          "mem_pct": 33.73
+        },
+        "aml-redis": {
+          "cpu_pct": 3.39,
+          "mem_pct": 0.49
+        }
+      }
+    },
+    {
+      "t": 1795688461.794983,
+      "postgres": {
+        "active": 3,
+        "idle": 15,
+        "idle_in_tx": 4,
+        "lock_waits": 0,
+        "total": 22
+      },
+      "sqs": {
+        "queue": 832,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 194,
+        "clients": 24,
+        "used_memory": 9617536
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 105.74,
+          "mem_pct": 3.72
+        },
+        "aml-api": {
+          "cpu_pct": 0.16,
+          "mem_pct": 2.75
+        },
+        "aml-postgres": {
+          "cpu_pct": 358.65,
+          "mem_pct": 33.5
+        },
+        "aml-redis": {
+          "cpu_pct": 2.68,
+          "mem_pct": 0.5
+        }
+      }
+    },
+    {
+      "t": 1795688469.1132019,
+      "postgres": {
+        "active": 7,
+        "idle": 14,
+        "idle_in_tx": 4,
+        "lock_waits": 0,
+        "total": 25
+      },
+      "sqs": {
+        "queue": 799,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 154,
+        "clients": 24,
+        "used_memory": 9775144
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 107.34,
+          "mem_pct": 3.72
+        },
+        "aml-api": {
+          "cpu_pct": 66.81,
+          "mem_pct": 2.75
+        },
+        "aml-postgres": {
+          "cpu_pct": 338.79,
+          "mem_pct": 33.35
+        },
+        "aml-redis": {
+          "cpu_pct": 9.56,
+          "mem_pct": 0.5
+        }
+      }
+    },
+    {
+      "t": 1795688476.48031,
+      "postgres": {
+        "active": 10,
+        "idle": 11,
+        "idle_in_tx": 3,
+        "lock_waits": 0,
+        "total": 24
+      },
+      "sqs": {
+        "queue": 761,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 194,
+        "clients": 24,
+        "used_memory": 9925208
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 106.88,
+          "mem_pct": 3.73
+        },
+        "aml-api": {
+          "cpu_pct": 0.21,
+          "mem_pct": 2.73
+        },
+        "aml-postgres": {
+          "cpu_pct": 338.03,
+          "mem_pct": 33.63
+        },
+        "aml-redis": {
+          "cpu_pct": 2.98,
+          "mem_pct": 0.51
+        }
+      }
+    },
+    {
+      "t": 1795688483.8832178,
+      "postgres": {
+        "active": 3,
+        "idle": 15,
+        "idle_in_tx": 1,
+        "lock_waits": 0,
+        "total": 19
+      },
+      "sqs": {
+        "queue": 725,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 180,
+        "clients": 24,
+        "used_memory": 10096192
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 109.99,
+          "mem_pct": 3.74
+        },
+        "aml-api": {
+          "cpu_pct": 0.16,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 368.68,
+          "mem_pct": 33.56
+        },
+        "aml-redis": {
+          "cpu_pct": 3.54,
+          "mem_pct": 0.5
+        }
+      }
+    },
+    {
+      "t": 1795688491.368673,
+      "postgres": {
+        "active": 2,
+        "idle": 17,
+        "idle_in_tx": 2,
+        "lock_waits": 0,
+        "total": 21
+      },
+      "sqs": {
+        "queue": 688,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 181,
+        "clients": 24,
+        "used_memory": 10257584
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 108.68,
+          "mem_pct": 3.73
+        },
+        "aml-api": {
+          "cpu_pct": 0.17,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 360.94,
+          "mem_pct": 33.49
+        },
+        "aml-redis": {
+          "cpu_pct": 2.96,
+          "mem_pct": 0.52
+        }
+      }
+    },
+    {
+      "t": 1795688498.6842182,
+      "postgres": {
+        "active": 8,
+        "idle": 16,
+        "idle_in_tx": 2,
+        "lock_waits": 0,
+        "total": 26
+      },
+      "sqs": {
+        "queue": 648,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 187,
+        "clients": 24,
+        "used_memory": 10443448
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 105.04,
+          "mem_pct": 3.74
+        },
+        "aml-api": {
+          "cpu_pct": 1.29,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 330.53,
+          "mem_pct": 33.38
+        },
+        "aml-redis": {
+          "cpu_pct": 2.82,
+          "mem_pct": 0.51
+        }
+      }
+    },
+    {
+      "t": 1795688506.043536,
+      "postgres": {
+        "active": 6,
+        "idle": 13,
+        "idle_in_tx": 2,
+        "lock_waits": 0,
+        "total": 21
+      },
+      "sqs": {
+        "queue": 612,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 187,
+        "clients": 24,
+        "used_memory": 10615592
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 107.85,
+          "mem_pct": 3.75
+        },
+        "aml-api": {
+          "cpu_pct": 0.12,
+          "mem_pct": 2.75
+        },
+        "aml-postgres": {
+          "cpu_pct": 284.14,
+          "mem_pct": 33.46
+        },
+        "aml-redis": {
+          "cpu_pct": 2.93,
+          "mem_pct": 0.53
+        }
+      }
+    },
+    {
+      "t": 1795688513.510844,
+      "postgres": {
+        "active": 4,
+        "idle": 17,
+        "idle_in_tx": 2,
+        "lock_waits": 0,
+        "total": 23
+      },
+      "sqs": {
+        "queue": 579,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 176,
+        "clients": 24,
+        "used_memory": 10746592
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 110.54,
+          "mem_pct": 3.75
+        },
+        "aml-api": {
+          "cpu_pct": 0.16,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 254.74,
+          "mem_pct": 33.37
+        },
+        "aml-redis": {
+          "cpu_pct": 10.5,
+          "mem_pct": 0.52
+        }
+      }
+    },
+    {
+      "t": 1795688520.913955,
+      "postgres": {
+        "active": 3,
+        "idle": 13,
+        "idle_in_tx": 4,
+        "lock_waits": 0,
+        "total": 20
+      },
+      "sqs": {
+        "queue": 544,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 189,
+        "clients": 24,
+        "used_memory": 10938584
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 105.26,
+          "mem_pct": 3.76
+        },
+        "aml-api": {
+          "cpu_pct": 30.39,
+          "mem_pct": 2.75
+        },
+        "aml-postgres": {
+          "cpu_pct": 317.66,
+          "mem_pct": 33.43
+        },
+        "aml-redis": {
+          "cpu_pct": 3.09,
+          "mem_pct": 0.53
+        }
+      }
+    },
+    {
+      "t": 1795688528.3849862,
+      "postgres": {
+        "active": 8,
+        "idle": 15,
+        "idle_in_tx": 6,
+        "lock_waits": 0,
+        "total": 29
+      },
+      "sqs": {
+        "queue": 509,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 154,
+        "clients": 24,
+        "used_memory": 11092144
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 107.78,
+          "mem_pct": 3.75
+        },
+        "aml-api": {
+          "cpu_pct": 0.18,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 437.84,
+          "mem_pct": 33.12
+        },
+        "aml-redis": {
+          "cpu_pct": 3.73,
+          "mem_pct": 0.53
+        }
+      }
+    },
+    {
+      "t": 1795688535.7331378,
+      "postgres": {
+        "active": 2,
+        "idle": 16,
+        "idle_in_tx": 1,
+        "lock_waits": 0,
+        "total": 19
+      },
+      "sqs": {
+        "queue": 476,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 193,
+        "clients": 24,
+        "used_memory": 11212984
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 107.4,
+          "mem_pct": 3.76
+        },
+        "aml-api": {
+          "cpu_pct": 0.15,
+          "mem_pct": 2.75
+        },
+        "aml-postgres": {
+          "cpu_pct": 313.45,
+          "mem_pct": 33.52
+        },
+        "aml-redis": {
+          "cpu_pct": 3.19,
+          "mem_pct": 0.53
+        }
+      }
+    },
+    {
+      "t": 1795688543.100193,
+      "postgres": {
+        "active": 3,
+        "idle": 16,
+        "idle_in_tx": 2,
+        "lock_waits": 0,
+        "total": 21
+      },
+      "sqs": {
+        "queue": 437,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 206,
+        "clients": 24,
+        "used_memory": 11422840
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 109.66,
+          "mem_pct": 3.76
+        },
+        "aml-api": {
+          "cpu_pct": 56.93,
+          "mem_pct": 3.06
+        },
+        "aml-postgres": {
+          "cpu_pct": 367.45,
+          "mem_pct": 33.42
+        },
+        "aml-redis": {
+          "cpu_pct": 2.92,
+          "mem_pct": 0.55
+        }
+      }
+    },
+    {
+      "t": 1795688550.419313,
+      "postgres": {
+        "active": 2,
+        "idle": 14,
+        "idle_in_tx": 3,
+        "lock_waits": 0,
+        "total": 19
+      },
+      "sqs": {
+        "queue": 399,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 204,
+        "clients": 24,
+        "used_memory": 11536976
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 110.75,
+          "mem_pct": 3.76
+        },
+        "aml-api": {
+          "cpu_pct": 0.15,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 388.85,
+          "mem_pct": 33.6
+        },
+        "aml-redis": {
+          "cpu_pct": 2.82,
+          "mem_pct": 0.54
+        }
+      }
+    },
+    {
+      "t": 1795688557.7724538,
+      "postgres": {
+        "active": 4,
+        "idle": 15,
+        "idle_in_tx": 2,
+        "lock_waits": 0,
+        "total": 21
+      },
+      "sqs": {
+        "queue": 363,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 184,
+        "clients": 24,
+        "used_memory": 11736096
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 108.51,
+          "mem_pct": 3.76
+        },
+        "aml-api": {
+          "cpu_pct": 0.16,
+          "mem_pct": 2.73
+        },
+        "aml-postgres": {
+          "cpu_pct": 333.27,
+          "mem_pct": 33.51
+        },
+        "aml-redis": {
+          "cpu_pct": 3.55,
+          "mem_pct": 0.55
+        }
+      }
+    },
+    {
+      "t": 1795688565.133735,
+      "postgres": {
+        "active": 7,
+        "idle": 16,
+        "idle_in_tx": 3,
+        "lock_waits": 0,
+        "total": 26
+      },
+      "sqs": {
+        "queue": 327,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 160,
+        "clients": 24,
+        "used_memory": 11902944
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 108.45,
+          "mem_pct": 3.77
+        },
+        "aml-api": {
+          "cpu_pct": 0.16,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 345.25,
+          "mem_pct": 33.45
+        },
+        "aml-redis": {
+          "cpu_pct": 9.83,
+          "mem_pct": 0.55
+        }
+      }
+    },
+    {
+      "t": 1795688572.500204,
+      "postgres": {
+        "active": 4,
+        "idle": 16,
+        "idle_in_tx": 2,
+        "lock_waits": 0,
+        "total": 22
+      },
+      "sqs": {
+        "queue": 294,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 192,
+        "clients": 24,
+        "used_memory": 12036728
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 101.51,
+          "mem_pct": 3.76
+        },
+        "aml-api": {
+          "cpu_pct": 63.43,
+          "mem_pct": 2.73
+        },
+        "aml-postgres": {
+          "cpu_pct": 482.61,
+          "mem_pct": 33.65
+        },
+        "aml-redis": {
+          "cpu_pct": 2.85,
+          "mem_pct": 0.56
+        }
+      }
+    },
+    {
+      "t": 1795688579.8474581,
+      "postgres": {
+        "active": 2,
+        "idle": 17,
+        "idle_in_tx": 4,
+        "lock_waits": 0,
+        "total": 23
+      },
+      "sqs": {
+        "queue": 256,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 180,
+        "clients": 24,
+        "used_memory": 12212056
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 109.5,
+          "mem_pct": 3.77
+        },
+        "aml-api": {
+          "cpu_pct": 0.21,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 425.8,
+          "mem_pct": 33.97
+        },
+        "aml-redis": {
+          "cpu_pct": 2.96,
+          "mem_pct": 0.56
+        }
+      }
+    },
+    {
+      "t": 1795688586.239131,
+      "postgres": {
+        "active": 6,
+        "idle": 15,
+        "idle_in_tx": 6,
+        "lock_waits": 0,
+        "total": 27
+      },
+      "sqs": {
+        "queue": 227,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 151,
+        "clients": 24,
+        "used_memory": 12347992
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 116.15,
+          "mem_pct": 3.77
+        },
+        "aml-api": {
+          "cpu_pct": 0.2,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 527.15,
+          "mem_pct": 34.23
+        },
+        "aml-redis": {
+          "cpu_pct": 14.82,
+          "mem_pct": 0.57
+        }
+      }
+    },
+    {
+      "t": 1795688593.822195,
+      "postgres": {
+        "active": 3,
+        "idle": 16,
+        "idle_in_tx": 4,
+        "lock_waits": 0,
+        "total": 23
+      },
+      "sqs": {
+        "queue": 201,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 104,
+        "clients": 24,
+        "used_memory": 12540008
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 122.15,
+          "mem_pct": 3.77
+        },
+        "aml-api": {
+          "cpu_pct": 0.16,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 410.56,
+          "mem_pct": 33.51
+        },
+        "aml-redis": {
+          "cpu_pct": 3.55,
+          "mem_pct": 0.57
+        }
+      }
+    },
+    {
+      "t": 1795688601.211827,
+      "postgres": {
+        "active": 6,
+        "idle": 14,
+        "idle_in_tx": 1,
+        "lock_waits": 0,
+        "total": 21
+      },
+      "sqs": {
+        "queue": 167,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 185,
+        "clients": 24,
+        "used_memory": 12643632
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 107.09,
+          "mem_pct": 3.77
+        },
+        "aml-api": {
+          "cpu_pct": 10.18,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 401.81,
+          "mem_pct": 33.75
+        },
+        "aml-redis": {
+          "cpu_pct": 14.81,
+          "mem_pct": 0.57
+        }
+      }
+    },
+    {
+      "t": 1795688608.618947,
+      "postgres": {
+        "active": 2,
+        "idle": 18,
+        "idle_in_tx": 3,
+        "lock_waits": 0,
+        "total": 23
+      },
+      "sqs": {
+        "queue": 134,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 157,
+        "clients": 24,
+        "used_memory": 12791104
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 109.94,
+          "mem_pct": 3.77
+        },
+        "aml-api": {
+          "cpu_pct": 0.22,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 175.05,
+          "mem_pct": 32.25
+        },
+        "aml-redis": {
+          "cpu_pct": 3.75,
+          "mem_pct": 0.57
+        }
+      }
+    },
+    {
+      "t": 1795688615.95198,
+      "postgres": {
+        "active": 6,
+        "idle": 12,
+        "idle_in_tx": 0,
+        "lock_waits": 0,
+        "total": 18
+      },
+      "sqs": {
+        "queue": 94,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 258,
+        "clients": 24,
+        "used_memory": 12985648
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 108.48,
+          "mem_pct": 3.77
+        },
+        "aml-api": {
+          "cpu_pct": 0.18,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 207.79,
+          "mem_pct": 32.91
+        },
+        "aml-redis": {
+          "cpu_pct": 10.23,
+          "mem_pct": 0.58
+        }
+      }
+    },
+    {
+      "t": 1795688623.266191,
+      "postgres": {
+        "active": 6,
+        "idle": 15,
+        "idle_in_tx": 0,
+        "lock_waits": 0,
+        "total": 21
+      },
+      "sqs": {
+        "queue": 56,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 210,
+        "clients": 24,
+        "used_memory": 13127840
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 108.69,
+          "mem_pct": 3.78
+        },
+        "aml-api": {
+          "cpu_pct": 65.68,
+          "mem_pct": 2.73
+        },
+        "aml-postgres": {
+          "cpu_pct": 205.22,
+          "mem_pct": 32.4
+        },
+        "aml-redis": {
+          "cpu_pct": 2.89,
+          "mem_pct": 0.57
+        }
+      }
+    },
+    {
+      "t": 1795688630.597182,
+      "postgres": {
+        "active": 1,
+        "idle": 15,
+        "idle_in_tx": 0,
+        "lock_waits": 0,
+        "total": 16
+      },
+      "sqs": {
+        "queue": 12,
+        "dlq": 0
+      },
+      "redis": {
+        "ops_per_sec": 128,
+        "clients": 24,
+        "used_memory": 13217968
+      },
+      "docker": {
+        "aml-worker": {
+          "cpu_pct": 13.68,
+          "mem_pct": 3.78
+        },
+        "aml-api": {
+          "cpu_pct": 0.22,
+          "mem_pct": 2.74
+        },
+        "aml-postgres": {
+          "cpu_pct": 5.41,
+          "mem_pct": 32.5
+        },
+        "aml-redis": {
+          "cpu_pct": 1.62,
+          "mem_pct": 0.59
+        }
+      }
+    }
+  ]
+}

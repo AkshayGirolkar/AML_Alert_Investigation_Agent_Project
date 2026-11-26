@@ -12,3 +12,4 @@ eval/reports/
 # F16 load test results (the manifest under loadtest/datasets is not ignored)
 loadtest/results/*
 !loadtest/results/.gitkeep
+!loadtest/results/example-*

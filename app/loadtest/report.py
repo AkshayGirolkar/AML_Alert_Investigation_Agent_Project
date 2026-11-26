@@ -14,6 +14,7 @@ CONFIG_KEYS = (
     "FAKE_LLM_ERROR_RATE",
     "FAKE_LLM_ESCALATE_PCT",
     "WORKER_CONCURRENCY",
+    "WORKER_DB_POOL_SIZE",
     "LLM_RATE_LIMIT_PER_SECOND",
     "LLM_RATE_LIMIT_BURST",
     "SQS_VISIBILITY_TIMEOUT",
@@ -143,3 +144,28 @@ def render_summary(result: dict[str, Any]) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+def sweep_table(results: list[dict[str, Any]]) -> str:
+    """One row per run: the table the ADR and README quote."""
+    head = (
+        "| run | workers x conc | alerts | cases/min (steady) | e2e p95 s | run p95 s "
+        "| api p95 ms | errors | dup | dlq | outcome |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|"
+    )
+    rows = []
+    for r in results:
+        w = r["params"].get("worker", {})
+        run = r["params"].get("run", {})
+        f = r["failures"]
+        label = run.get("label") or r["run_id"]
+        shape = f"{run.get('workers', 1)} x {w.get('WORKER_CONCURRENCY', '?')}"
+        rows.append(
+            f"| {label} | {shape} | {r['cases']} "
+            f"| {_num(r['steady_throughput_per_min'])} "
+            f"| {_num(r['latency']['e2e']['p95'])} "
+            f"| {_num(r['latency']['run_time']['p95'])} "
+            f"| {_num(r['api']['latency_ms']['p95'], 0)} "
+            f"| {f['errors']} | {f['duplicates']} | {f['dlq']} | {r['outcome']} |"
+        )
+    return "\n".join([head, *rows]) + "\n"

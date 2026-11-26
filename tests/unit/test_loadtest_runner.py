@@ -15,7 +15,7 @@ from app.loadtest.report import (
     render_summary,
     worker_config,
 )
-from app.loadtest.sampler import Sampler, parse_docker_stats
+from app.loadtest.sampler import Sampler, parse_docker_stats, running_only
 
 
 def client(handler: httpx.MockTransport) -> httpx.AsyncClient:
@@ -171,3 +171,41 @@ def test_result_is_json_serialisable_and_summary_has_config() -> None:
     md = render_summary(r)
     assert "Load run r1" in md and "LLM_PROVIDER" in md and "duplicates **0**" in md
     assert "n/a" not in md.split("| Latency")[0]  # headline numbers are present
+
+
+def test_sweep_table_has_one_row_per_run() -> None:
+    from app.loadtest.report import sweep_table
+
+    r = _result()
+    r["params"]["run"]["label"] = "c8"
+    r["params"]["run"]["workers"] = 2
+    r["params"]["worker"]["WORKER_CONCURRENCY"] = "8"
+    lines = sweep_table([r, _result()]).strip().splitlines()
+    assert len(lines) == 4  # header, rule, two runs
+    assert lines[2].startswith("| c8 | 2 x 8 | 10 |")
+
+
+def test_running_only_drops_missing_containers() -> None:
+    wanted = ["aml-worker", "aml-worker-2", "aml-api"]
+    assert running_only(wanted, "aml-api\naml-worker\nother\n") == [
+        "aml-worker",
+        "aml-api",
+    ]
+    assert running_only(wanted, "") == []
+
+
+@pytest.mark.parametrize(
+    ("concurrency", "explicit", "expected"),
+    [(1, 0, 4), (4, 0, 4), (8, 0, 4), (16, 0, 8), (32, 0, 16), (64, 0, 16), (64, 5, 5)],
+)
+def test_db_pool_size_auto_and_explicit(
+    concurrency: int, explicit: int, expected: int
+) -> None:
+    from app.config import Settings
+
+    s = Settings(  # type: ignore[call-arg]
+        postgres_password="x",
+        worker_concurrency=concurrency,
+        worker_db_pool_size=explicit,
+    )
+    assert s.db_pool_size == expected

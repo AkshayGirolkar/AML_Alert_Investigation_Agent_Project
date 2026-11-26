@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     sqs_max_receive_count: int = 3
     sqs_visibility_timeout: int = 300  # seconds; must exceed one investigation
     worker_concurrency: int = 4
+    # F16: connections shared by the checkpointer and memory store (psycopg pool).
+    # 0 = auto: half the worker concurrency, between 4 and 16 (load test: 4 was a limit
+    # at concurrency 32, 16 gave +22% throughput; Postgres allows 100 connections).
+    worker_db_pool_size: int = 0
 
     # F10 Redis (sanctions cache, LLM rate limiter, case locks, SSE progress events)
     redis_url: str = "redis://localhost:6379/0"
@@ -122,6 +126,12 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
+    @property
+    def db_pool_size(self) -> int:
+        if self.worker_db_pool_size > 0:
+            return self.worker_db_pool_size
+        return min(16, max(4, self.worker_concurrency // 2))
 
 
 def get_settings() -> Settings:

@@ -115,15 +115,33 @@ def parse_docker_stats(output: str) -> dict[str, Any]:
     return out
 
 
+def running_only(wanted: list[str], ps_output: str) -> list[str]:
+    """Keep the wanted containers that `docker ps` lists (a missing one fails the stats)."""
+    up = set(ps_output.split())
+    return [c for c in wanted if c in up]
+
+
 def docker_probe(containers: list[str]) -> Probe:
     async def probe() -> dict[str, Any]:
+        ps = await asyncio.create_subprocess_exec(
+            "docker",
+            "ps",
+            "--format",
+            "{{.Names}}",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        ps_out, _ = await ps.communicate()
+        names = running_only(containers, ps_out.decode())
+        if not names:
+            return {}
         proc = await asyncio.create_subprocess_exec(
             "docker",
             "stats",
             "--no-stream",
             "--format",
             "{{json .}}",
-            *containers,
+            *names,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )

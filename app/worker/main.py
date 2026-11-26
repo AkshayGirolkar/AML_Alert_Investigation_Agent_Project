@@ -81,6 +81,8 @@ async def run(settings: Settings) -> None:
     pool = AsyncConnectionPool(
         conninfo(settings.sync_database_url),
         kwargs={"autocommit": True, "row_factory": dict_row},
+        min_size=settings.db_pool_size,
+        max_size=settings.db_pool_size,
         open=False,
     )
     await pool.open()
@@ -130,7 +132,11 @@ async def run(settings: Settings) -> None:
                 events=EventPublisher(redis, settings.events_ttl_seconds),
                 lock_ttl=settings.case_lock_ttl_seconds,
             )
-            log.info("worker started (concurrency=%d)", settings.worker_concurrency)
+            log.info(
+                "worker started (concurrency=%d, db pool=%d)",
+                settings.worker_concurrency,
+                settings.db_pool_size,
+            )
             metrics_task: asyncio.Task[None] | None = None
             if settings.worker_metrics_port > 0:
                 metrics_task = asyncio.create_task(

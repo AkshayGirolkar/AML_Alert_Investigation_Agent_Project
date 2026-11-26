@@ -14,6 +14,7 @@ x-app-env: &app-env
   FAKE_LLM_ERROR_RATE: ${FAKE_LLM_ERROR_RATE:-0.0}
   FAKE_LLM_ESCALATE_PCT: ${FAKE_LLM_ESCALATE_PCT:-30}
   WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+  WORKER_DB_POOL_SIZE: ${WORKER_DB_POOL_SIZE:-0}
   LLM_RATE_LIMIT_PER_SECOND: ${LLM_RATE_LIMIT_PER_SECOND:-5.0}
   LLM_RATE_LIMIT_BURST: ${LLM_RATE_LIMIT_BURST:-10}
 
@@ -101,6 +102,23 @@ services:
     image: aml-app
     container_name: aml-worker
     restart: unless-stopped
+    env_file: .env
+    environment: *app-env
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      localstack:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # F16: a second worker for the 1-vs-2-workers sweep. Off by default:
+  #   docker compose --profile scale up -d worker worker2
+  worker2:
+    image: aml-app
+    container_name: aml-worker-2
+    profiles: ["scale"]
     env_file: .env
     environment: *app-env
     command: ["python", "-m", "app.worker"]
