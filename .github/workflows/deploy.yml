@@ -1,0 +1,52 @@
+name: Deploy
+
+# Manual (or on a version tag): build the image, push it to ECR tagged with the commit,
+# run migrations and roll the ECS services. Infrastructure changes are applied by hand
+# with Terraform (see infra/README.md). Needs repository variables:
+#   AWS_ROLE_ARN (terraform output github_deploy_role_arn), AWS_REGION,
+#   ECS_CLUSTER (cluster_name), ECR_REPOSITORY (the repository name, e.g. aml-agent-dev)
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  id-token: write # OIDC, no long-lived AWS keys
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Roll out (migrate, then update services)
+        env:
+          CLUSTER: ${{ vars.ECS_CLUSTER }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+        run: scripts/aws_deploy.sh

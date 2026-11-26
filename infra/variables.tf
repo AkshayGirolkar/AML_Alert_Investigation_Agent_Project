@@ -79,3 +79,90 @@ variable "destroyable" {
   type        = bool
   default     = true
 }
+
+# --- compute (PR 3) ---------------------------------------------------------
+
+variable "image_tag" {
+  description = "Image tag (git sha) in ECR. Empty = nothing deployed yet: services are created with 0 tasks."
+  type        = string
+  default     = ""
+}
+
+variable "api_cpu" {
+  type    = number
+  default = 512
+}
+
+variable "api_memory" {
+  type    = number
+  default = 1024
+}
+
+variable "api_min_tasks" {
+  type    = number
+  default = 2
+}
+
+variable "api_max_tasks" {
+  type    = number
+  default = 4
+}
+
+variable "worker_cpu" {
+  type    = number
+  default = 1024
+}
+
+variable "worker_memory" {
+  type    = number
+  default = 2048
+}
+
+variable "worker_min_tasks" {
+  type    = number
+  default = 1
+}
+
+variable "worker_max_tasks" {
+  type    = number
+  default = 4
+}
+
+variable "worker_concurrency" {
+  type    = number
+  default = 8
+}
+
+variable "worker_backlog_per_task" {
+  description = "Autoscaling target: visible SQS messages per running worker task."
+  type        = number
+  default     = 40
+}
+
+variable "llm_provider" {
+  description = "openai (real) or fake (load tests, no key needed)."
+  type        = string
+  default     = "openai"
+}
+
+variable "langsmith_tracing" {
+  type    = bool
+  default = false
+}
+
+variable "alert_email" {
+  description = "Email for CloudWatch alarm notifications (confirm the SNS subscription)."
+  type        = string
+  default     = ""
+}
+
+variable "log_retention_days" {
+  type    = number
+  default = 14
+}
+
+variable "github_repo" {
+  description = "owner/name allowed to deploy via OIDC. Empty = do not create the GitHub OIDC role."
+  type        = string
+  default     = ""
+}
