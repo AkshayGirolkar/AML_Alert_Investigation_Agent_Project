@@ -64,7 +64,12 @@ class CaseStore(Protocol):
     ) -> None: ...
 
     async def record_decision(
-        self, case_id: int, decision: str, analyst_id: str, notes: str | None
+        self,
+        case_id: int,
+        decision: str,
+        analyst_id: str,
+        notes: str | None,
+        audit_extra: dict[str, Any] | None = None,
     ) -> tuple[DecisionResult, DecisionRow | None, str | None]: ...
 
     async def get_decision(self, case_id: int) -> DecisionRow | None: ...
@@ -193,6 +198,7 @@ class SqlCaseStore:
                     status="completed",
                     outcome=state.get("outcome"),
                     verdict=state.get("verdict"),
+                    evidence=state.get("evidence"),
                     sar_draft=state.get("sar_draft"),
                     escalation_reason=state.get("escalation_reason"),
                     error=None,
@@ -224,6 +230,7 @@ class SqlCaseStore:
                 .values(
                     status="awaiting_review",
                     verdict=state.get("verdict"),
+                    evidence=state.get("evidence"),
                     sar_draft=state.get("sar_draft"),
                     escalation_reason=state.get("escalation_reason"),
                     error=None,
@@ -232,7 +239,12 @@ class SqlCaseStore:
             )
 
     async def record_decision(
-        self, case_id: int, decision: str, analyst_id: str, notes: str | None
+        self,
+        case_id: int,
+        decision: str,
+        analyst_id: str,
+        notes: str | None,
+        audit_extra: dict[str, Any] | None = None,
     ) -> tuple[DecisionResult, DecisionRow | None, str | None]:
         """Store the analyst's decision once (UNIQUE case_id) with an audit row.
 
@@ -278,7 +290,11 @@ class SqlCaseStore:
                     case_id=case_id,
                     actor=analyst_id,
                     action=f"decision_{decision}",
-                    detail={"decision": decision, "notes": notes},
+                    detail={
+                        "decision": decision,
+                        "notes": notes,
+                        **(audit_extra or {}),
+                    },
                 )
             )
             return "recorded", dict(row), case["status"]

@@ -27,6 +27,7 @@ from app.services.events import EventPublisher
 from app.services.rate_limiter import RedisTokenBucket
 from app.services.sanctions_cache import SanctionsCache
 from app.synth.embeddings import OpenAIEmbedder
+from app.worker.console_relay import ConsoleRelay
 from app.worker.processor import Processor
 
 log = logging.getLogger("worker")
@@ -117,7 +118,26 @@ async def run(settings: Settings) -> None:
                 lock_ttl=settings.case_lock_ttl_seconds,
             )
             log.info("worker started (concurrency=%d)", settings.worker_concurrency)
-            await poll_loop(queue, processor, settings.worker_concurrency, stop)
+            relay_task: asyncio.Task[None] | None = None
+            if settings.console_relay_enabled:
+                relay = ConsoleRelay(
+                    engine,
+                    SqlCaseStore(engine),
+                    queue,
+                    settings.console_relay_max_attempts,
+                )
+                relay_task = asyncio.create_task(
+                    relay.run(
+                        conninfo(settings.sync_database_url),
+                        settings.console_relay_poll_seconds,
+                        stop,
+                    )
+                )
+            try:
+                await poll_loop(queue, processor, settings.worker_concurrency, stop)
+            finally:
+                if relay_task is not None:
+                    await relay_task
     finally:
         await redis.aclose()
         await pool.close()

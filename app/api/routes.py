@@ -13,6 +13,7 @@ from app.api.schemas import DecisionRequest
 from app.config import get_settings
 from app.db.cases import CaseStore, public_case
 from app.messaging.sqs import InvestigationQueue
+from app.services import case_commands as commands
 from app.services.events import (
     TERMINAL_STATUSES,
     events_key,
@@ -48,19 +49,13 @@ async def start_investigation(
     alert_id: int, request: Request, response: Response
 ) -> dict[str, Any]:
     """Create the case for this alert (once) and enqueue it. Safe to call repeatedly."""
-    store, queue = _store(request), _queue(request)
-    if not await store.alert_exists(alert_id):
+    out = await commands.start_investigation(_store(request), _queue(request), alert_id)
+    if out.code == "not_found":
         raise HTTPException(404, f"alert {alert_id} not found")
-    case, created = await store.create_or_get(alert_id)
-    if case["status"] == "completed":
-        response.status_code = 200  # already investigated; nothing to enqueue
-        return public_case(case)
-    if case["status"] == "failed":
-        case = await store.requeue(case["case_id"]) or case
-    # Commit happened above; a failed send leaves a 'queued' case and a retry re-sends.
-    if created or case["status"] == "queued":
-        await queue.send(case["case_id"], alert_id)
-    return public_case(case)
+    assert out.case is not None
+    if out.code == "already_completed":
+        response.status_code = 200  # already investigated; nothing was enqueued
+    return public_case(out.case)
 
 
 @router.get("/cases/{case_id}")
@@ -86,25 +81,29 @@ async def decide(
     Safe to repeat: the same decision again returns 200 (and re-sends the resume message
     if the case is still waiting, in case the first send failed).
     """
-    store, queue = _store(request), _queue(request)
-    result, decision, status = await store.record_decision(
-        case_id, body.decision, body.analyst_id, body.notes
+    out = await commands.record_decision(
+        _store(request),
+        _queue(request),
+        case_id,
+        body.decision,
+        body.analyst_id,
+        body.notes,
     )
-    if result == "not_found":
+    if out.result == "not_found":
         raise HTTPException(404, f"case {case_id} not found")
-    if result == "not_reviewable":
-        raise HTTPException(409, f"case {case_id} is {status}, not awaiting review")
-    if result == "conflict":
+    if out.result == "not_reviewable":
+        raise HTTPException(409, f"case {case_id} is {out.status}, not awaiting review")
+    if out.result == "conflict":
         raise HTTPException(
             409,
-            f"case {case_id} already has decision {decision['decision']!r}",  # type: ignore[index]
+            f"case {case_id} already has decision {out.decision['decision']!r}",  # type: ignore[index]
         )
-    if result == "recorded" or status == "awaiting_review":
-        case = await store.get(case_id)
-        assert case is not None
-        await queue.send(case_id, case["alert_id"], "resume")
-    response.status_code = 202 if result == "recorded" else 200
-    return {"case_id": case_id, "decision": _decision_view(decision), "status": status}
+    response.status_code = 202 if out.result == "recorded" else 200
+    return {
+        "case_id": case_id,
+        "decision": _decision_view(out.decision),
+        "status": out.status,
+    }
 
 
 @router.get("/alerts/{alert_id}/case")
