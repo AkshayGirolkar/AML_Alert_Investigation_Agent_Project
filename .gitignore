@@ -8,3 +8,7 @@ __pycache__/
 # F15 eval outputs (datasets and the replay fixture are committed)
 eval/runs/
 eval/reports/
+
+# F16 load test results (the manifest under loadtest/datasets is not ignored)
+loadtest/results/*
+!loadtest/results/.gitkeep
