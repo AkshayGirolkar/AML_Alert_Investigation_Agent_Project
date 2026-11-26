@@ -38,7 +38,9 @@ from app.loadtest.report import (
     worker_config,
 )
 from app.loadtest.sampler import (
+    Probe,
     Sampler,
+    cloudwatch_probe,
     docker_probe,
     postgres_probe,
     redis_probe,
@@ -77,6 +79,17 @@ def _worker_env(container: str) -> list[str] | None:
         return None
 
 
+def _upload(region: str, bucket: str, out: Path, run_id: str) -> None:
+    """Copy the result files to S3 (an ECS task's disk disappears when it stops)."""
+    import boto3  # type: ignore[import-untyped]
+
+    s3 = boto3.client("s3", region_name=region)
+    for ext in ("json", "md"):
+        key = f"loadtest/results/{run_id}.{ext}"
+        s3.upload_file(str(out / f"{run_id}.{ext}"), bucket, key)
+        print(f"Uploaded s3://{bucket}/{key}")
+
+
 async def run(a: argparse.Namespace) -> int:
     settings = get_settings()
     if settings.aws_endpoint_url is None and not a.force:
@@ -104,6 +117,10 @@ async def run(a: argparse.Namespace) -> int:
 
     env = _worker_env(a.worker_container)
     cfg = worker_config(env) if env else {}
+    if a.assume_fake_llm:
+        # AWS: the workers are ECS tasks, not containers we can inspect. The caller states
+        # that the stack was applied with llm_provider = "fake"; recorded with the run.
+        cfg = {**cfg, "LLM_PROVIDER": "fake", "source": "asserted (--assume-fake-llm)"}
     fake = cfg.get("LLM_PROVIDER") == "fake"
     if not fake and not a.live:
         print(
@@ -126,12 +143,21 @@ async def run(a: argparse.Namespace) -> int:
         if (await queue.depths())[0] > 0 and not a.force:
             print("Queue is not empty; drain or purge it first (or --force).")
             return 2
-        probes = {
+        probes: dict[str, Probe] = {
             "postgres": postgres_probe(url),
             "sqs": sqs_probe(queue.depths),
             "redis": redis_probe(redis),
-            "docker": docker_probe(CONTAINERS),
         }
+        if a.sample_source == "cloudwatch":
+            probes["cloudwatch"] = cloudwatch_probe(
+                settings.aws_region,
+                a.cw_prefix,
+                settings.sqs_queue_name,
+                a.cw_prefix,
+                a.cw_prefix,
+            )
+        else:
+            probes["docker"] = docker_probe(CONTAINERS)
         sampler = Sampler(probes, a.sample_interval)
         sampler.start()
 
@@ -193,6 +219,8 @@ async def run(a: argparse.Namespace) -> int:
     summary = render_summary(result)
     (out / f"{run_id}.md").write_text(summary)
     print(summary)
+    if a.upload_s3:
+        await asyncio.to_thread(_upload, settings.aws_region, a.upload_s3, out, run_id)
     clean = is_clean(result, a.allow_dlq)
     print("RESULT:", "clean" if clean else "NOT CLEAN")
     return 0 if clean else 1
@@ -222,6 +250,23 @@ def main() -> int:
         "--workers", type=int, default=1, help="worker containers (recorded)"
     )
     p.add_argument("--force", action="store_true")
+    p.add_argument(
+        "--sample-source",
+        choices=["docker", "cloudwatch"],
+        default="docker",
+        help="cloudwatch for an AWS target (F17)",
+    )
+    p.add_argument(
+        "--cw-prefix",
+        default="aml-agent-dev",
+        help="resource name used for the ECS cluster, RDS and Redis (project-env)",
+    )
+    p.add_argument(
+        "--assume-fake-llm",
+        action="store_true",
+        help="AWS: the worker tasks run LLM_PROVIDER=fake (terraform llm_provider=fake)",
+    )
+    p.add_argument("--upload-s3", default=None, metavar="BUCKET")
     p.add_argument("--eval-dataset", default="eval/datasets/eval-100.json")
     p.add_argument("--results-dir", default="loadtest/results")
     p.add_argument("--database-url", default=None)

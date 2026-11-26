@@ -111,3 +111,33 @@ def test_api_stats() -> None:
     s = api_stats([10, 20, 30], errors=1, total=4)
     assert s.error_rate == 0.25 and s.latency_ms.p50 == 20
     assert api_stats([], 0, 0).error_rate is None
+
+
+def test_cloudwatch_queries_cover_each_series_with_dimensions() -> None:
+    from app.loadtest.sampler import cloudwatch_queries
+
+    qs = cloudwatch_queries("c", "q", "db", "rd")
+    by_id = {q["Id"]: q for q in qs}
+    assert len(by_id) == len(qs) == 9
+    dims = by_id["worker_tasks"]["MetricStat"]["Metric"]["Dimensions"]
+    assert {"Name": "ServiceName", "Value": "worker"} in dims
+    assert by_id["queue_visible"]["MetricStat"]["Metric"]["Dimensions"] == [
+        {"Name": "QueueName", "Value": "q"}
+    ]
+
+
+def test_parse_cloudwatch_takes_latest_point_and_none_when_empty() -> None:
+    from app.loadtest.sampler import parse_cloudwatch
+
+    out = parse_cloudwatch(
+        [
+            {
+                "Id": "rds_cpu_pct",
+                "Timestamps": [1, 3, 2],
+                "Values": [10.0, 30.123, 20.0],
+            },
+            {"Id": "redis_cpu_pct", "Timestamps": [], "Values": []},
+        ]
+    )
+    assert out["rds_cpu_pct"] == 30.12
+    assert out["redis_cpu_pct"] is None and out["worker_tasks"] is None

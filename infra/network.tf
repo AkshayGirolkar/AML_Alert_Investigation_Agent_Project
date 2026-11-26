@@ -172,3 +172,13 @@ resource "aws_vpc_security_group_ingress_rule" "redis_from_app" {
   ip_protocol                  = "tcp"
   description                  = "Redis from ECS tasks"
 }
+
+# The in-VPC load test (ECS one-off task) calls the ALB through the NAT gateway's public IP.
+resource "aws_vpc_security_group_ingress_rule" "alb_from_nat" {
+  security_group_id = aws_security_group.alb.id
+  cidr_ipv4         = "${aws_eip.nat.public_ip}/32"
+  from_port         = 80
+  to_port           = 80
+  ip_protocol       = "tcp"
+  description       = "HTTP from tasks via the NAT (load test)"
+}
