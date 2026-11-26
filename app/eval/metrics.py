@@ -192,3 +192,17 @@ def compute_metrics(rows: Sequence[ResultRow]) -> EvalMetrics:
         mean_tool_calls=ratio(sum(r.tool_calls for r in scored), len(scored)),
         unmapped_typologies=dict(sorted(unmapped.items())),
     )
+
+
+def typology_confusion(rows: Sequence[ResultRow]) -> dict[str, dict[str, int]]:
+    """True typology -> {named typology or "(none)": count}, escalated true alerts only.
+
+    Shows where the evidence cannot separate patterns (F19): a row spread over many
+    columns means the agent is guessing.
+    """
+    out: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for r in rows:
+        if r.truth and r.escalated:
+            named = normalize_typology(r.typology) or "(none)"
+            out[r.truth_typology or UNTYPED][named] += 1
+    return {k: dict(sorted(v.items())) for k, v in sorted(out.items())}

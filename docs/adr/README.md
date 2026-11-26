@@ -13,5 +13,6 @@
 | [0009](0009-f16-load-test.md) | F16 | Load test with a fake LLM and everything else real; two bottlenecks found and fixed; failure drills. | Accepted |
 | [0010](0010-f17-aws-terraform.md) | F17 | ECS Fargate, RDS, ElastiCache, SQS, one NAT, local Terraform state, budget alarm in its own stack. | Accepted; code complete, never applied |
 | [0011](0011-f11-auth-rbac.md) | F11 | JWT (Cognito JWKS, or HS256 for dev), analyst and supervisor roles, supervisor needed for high-risk decisions. | Accepted |
+| [0012](0012-f19-typology-prompt.md) | F19 | Closed-set typology plus code-counted flow facts; 0% to a few percent, because the tools only show a local footprint. | Accepted; target not met |
 
 Numbering follows the order the ADRs were written, not the feature order.

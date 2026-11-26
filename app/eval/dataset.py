@@ -10,7 +10,7 @@ Labels are stored here only for the scorer; the agent never sees them.
 import hashlib
 import json
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -126,20 +126,36 @@ SELECT alert_id, rule_id, is_true_positive, typology FROM (
                ORDER BY md5(%(seed)s::text || ':' || alert_id::text)
            ) AS rn
     FROM alerts
+    WHERE alert_id <> ALL(%(exclude)s::bigint[])
 ) t WHERE rn <= %(size)s
 """
 
 
-def fetch_candidates(database_url: str, size: int, seed: int) -> list[Candidate]:
+def fetch_candidates(
+    database_url: str, size: int, seed: int, exclude: Collection[int] = ()
+) -> list[Candidate]:
     with psycopg.connect(conninfo(database_url)) as conn:
         rows = conn.execute(
-            CANDIDATE_SQL, {"seed": seed, "size": size, "untyped": UNTYPED}
+            CANDIDATE_SQL,
+            {
+                "seed": seed,
+                "size": size,
+                "untyped": UNTYPED,
+                "exclude": sorted(exclude),
+            },
         ).fetchall()
     return [Candidate(int(a), r, bool(t), ty) for a, r, t, ty in rows]
 
 
 def build_dataset(
-    database_url: str, size: int, seed: int, name: str = "eval"
+    database_url: str,
+    size: int,
+    seed: int,
+    name: str = "eval",
+    exclude: Collection[int] = (),
 ) -> EvalDataset:
-    items, strata = select_items(fetch_candidates(database_url, size, seed), size, seed)
+    """`exclude`: alert ids that must not appear (e.g. the confirmation set, F19)."""
+    items, strata = select_items(
+        fetch_candidates(database_url, size, seed, exclude), size, seed
+    )
     return EvalDataset(name, seed, size, strata, items)

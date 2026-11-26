@@ -4,22 +4,23 @@ A deterministic SQL rules engine raises anti-money-laundering alerts on the IBM 
 
 ## Headline result
 
-100 alerts (50 truly laundering, 50 false), frozen and stratified (`eval/datasets/eval-100.json`). Planner `gpt-4o-mini`, assessor `gpt-4o`. Run `full-100-v1`; full report in [`docs/results/eval-full-100-v1.md`](docs/results/eval-full-100-v1.md), raw rows in [`docs/results/eval-full-100-v1.json`](docs/results/eval-full-100-v1.json).
+100 alerts (50 truly laundering, 50 false), frozen and stratified (`eval/datasets/eval-100.json`). Planner `gpt-4o-mini`, assessor `gpt-4o`. Run `full-100-v2` (current prompt); full report in [`docs/results/eval-full-100-v2.md`](docs/results/eval-full-100-v2.md), raw rows in [`docs/results/eval-full-100-v2.json`](docs/results/eval-full-100-v2.json). The earlier prompt's run is kept as [`eval-full-100-v1`](docs/results/eval-full-100-v1.md).
 
 ![Agent vs rules-only](docs/img/eval-agent-vs-rules.png)
 
 | | Rules only (escalate every alert) | Agent |
 |---|---|---|
-| Recall of true laundering alerts | 100.0% | 90.0% (95% CI 79-96%) |
-| Precision of escalations | 50.0% | 55.6% (45-66%) |
-| Alerts sent to an analyst | 100 | 81 |
-| Launderers missed | 0 | 5 |
-| False alerts closed | 0 | 14 |
+| Recall of true laundering alerts | 100.0% | 88.0% (95% CI 76-94%) |
+| Precision of escalations | 50.0% | 58.7% (47-69%) |
+| Alerts sent to an analyst | 100 | 75 |
+| Launderers missed | 0 | 6 |
+| False alerts closed | 0 | 19 |
 
-The agent removes 19.0% of the analyst workload and lets 10.0% of true alerts through. Whether that trade is acceptable is a policy choice, not something this project decides. Grounding rate is 100.0% (every verdict cites evidence ids that exist in state), mean cost $0.0175 per case, mean latency 11.5 s.
+The agent removes 25.0% of the analyst workload and lets 12.0% of true alerts through. Whether that trade is acceptable is a policy choice, not something this project decides. Grounding rate is 100.0% (every verdict cites evidence ids that exist in state), mean cost $0.0174 per case, mean latency 9.9 s.
 
 ### Limitations (read these before quoting the numbers)
-- **Typology accuracy is 0%.** The prompt tells the model to answer null unless the pattern structure is visible, so it rarely names one, and was wrong when it did. This is a prompt problem, not a scorer bug, and it is not fixed.
+- **Typology accuracy is about 3%.** The first prompt scored 0% (it rarely named a pattern and was wrong when it did). F19 made the typology a closed set of the IBM names and added counted flow facts (outgoing vs incoming, counterparties, cycles) to the prompt. That raised it to 7.3% on a separate tuning set and 2.6% on this set (1 of 39 escalated true alerts). It stays low because the tools show one account's local footprint, which does not separate most IBM patterns (feasibility table in [ADR 0012](docs/adr/0012-f19-typology-prompt.md)). The one correct name here is a FAN-OUT, and every FAN-OUT it named was right; it names any pattern for about 20% of escalated true alerts. The 25% target was not met.
+- **Recall moved from 90.0% to 88.0% with the new prompt** (94% to 92% on the tuning set). The intervals overlap heavily, so this may be noise, but it was not shown to be.
 - **The eval thresholds are a regression floor, not a generalisation claim.** `eval/thresholds.json` was set from the same 100 alerts. Tuning prompts against that set would overfit it; a held-out split must come first.
 - **One model pair and one run.** Confidence intervals are wide (n = 50 true alerts); per-typology rows have 5-6 alerts each.
 - **Load numbers use a fake LLM on a laptop.** See below.

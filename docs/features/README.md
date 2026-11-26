@@ -20,7 +20,8 @@ Specs are `Fxx-*.md`; most features also have a plain-language `Fxx-explained.tx
 | F12 | LLM gateway | [F12](F12-llm-gateway.md) | Built |
 | F13 | Observability | [F13](F13-observability.md) | Built |
 | F14 | Analyst console (separate repo) | [F14](F14-analyst-console.md) | Spec only, not built |
-| F15 | Evaluation harness | [F15](F15-eval-harness.md) | Built; typology accuracy still 0% |
+| F15 | Evaluation harness | [F15](F15-eval-harness.md) | Built |
 | F16 | Load test | [F16](F16-load-test.md) | Built |
 | F17 | AWS with Terraform | [F17](F17-aws-terraform.md) | Code complete, never applied |
-| F18 | Portfolio polish | [F18](F18-portfolio-polish.md) | In progress; demo recording pending |
+| F18 | Portfolio polish | [F18](F18-portfolio-polish.md) | Built; demo recording pending |
+| F19 | Typology naming in the verdict | [F19](F19-typology-prompt.md) | Built; typology accuracy 2.6%, target not met |

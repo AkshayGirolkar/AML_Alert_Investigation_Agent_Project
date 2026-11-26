@@ -203,7 +203,7 @@ class Nodes:
                 "grounding_errors": ["LLM cost budget exceeded; no verdict"],
                 "grounding_retries": MAX_GROUNDING_RETRIES + 1,
             }
-        verdict = Verdict.model_validate(state["verdict"])
+        verdict = Verdict.from_state(state["verdict"])
         problems = check_grounding(verdict, state.get("evidence", []))
         retries = state.get("grounding_retries", 0) + (1 if problems else 0)
         return {
@@ -221,7 +221,7 @@ class Nodes:
         verdict = state.get("verdict") or {}
         cfg = self._settings
         reason = escalation_reason(
-            Verdict.model_validate(verdict) if verdict else None,
+            Verdict.from_state(verdict) if verdict else None,
             state.get("grounded", False),
             cfg.close_risk_max,
             cfg.close_confidence_min,

@@ -71,3 +71,11 @@ def test_roundtrip_is_byte_identical(tmp_path: Path) -> None:
     assert loaded == ds
     loaded.save(p)
     assert p.read_text() == first
+
+
+def test_tune_set_is_disjoint_from_confirmation_set() -> None:
+    """F19: prompt tuning uses tune-100 only; eval-100 stays a confirmation set."""
+    tune = EvalDataset.load("eval/datasets/tune-100.json")
+    confirm = EvalDataset.load("eval/datasets/eval-100.json")
+    assert tune.items and confirm.items
+    assert not {i.alert_id for i in tune.items} & {i.alert_id for i in confirm.items}

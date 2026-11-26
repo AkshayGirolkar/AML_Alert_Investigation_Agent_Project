@@ -96,3 +96,40 @@ def alert_context(alert: dict[str, Any], settings: Any) -> dict[str, Any]:
             times_threshold=round(count / threshold, 1) if threshold else None,
         )
     return ctx
+
+
+def structure_facts(evidence: list[dict[str, Any]]) -> dict[str, Any]:
+    """Flow-shape counts read off the tool results, computed here so the LLM never counts.
+
+    Used to name a laundering pattern (F19). Only successful, non-empty results count;
+    a fact is omitted when its tool did not run.
+    """
+    facts: dict[str, Any] = {}
+    for e in evidence:
+        if e.get("status") != "ok":
+            continue
+        d = e.get("data", {})
+        if e.get("tool") == "query_transactions" and "outgoing_count" in d:
+            if d.get("direction") == "both" and "outgoing" not in facts:
+                out, inc = d["outgoing_count"], d["incoming_count"]
+                facts.update(
+                    outgoing=out,
+                    incoming=inc,
+                    distinct_counterparties=d["distinct_counterparties"],
+                    flow=(
+                        "outgoing-heavy"
+                        if out >= 3 * max(inc, 1)
+                        else "incoming-heavy"
+                        if inc >= 3 * max(out, 1)
+                        else "mixed"
+                    ),
+                    source_evidence_id=e.get("evidence_id"),
+                )
+        elif e.get("tool") == "counterparty_network" and "root_degree" in d:
+            nodes = d.get("nodes", [])
+            facts.update(
+                network_direct=sum(1 for n in nodes if n.get("hop") == 1),
+                network_second_hop=sum(1 for n in nodes if n.get("hop") == 2),
+                network_cycles=len(d.get("cycles_through_account", [])),
+            )
+    return facts

@@ -96,3 +96,20 @@ def test_langsmith_sync_uploads_masked_data_and_never_raises() -> None:
     assert again.examples == []  # dataset is uploaded once
 
     assert sync_run(FakeClient(fail=True), ds, INFO, r, m) is False
+
+
+def test_report_has_named_columns_and_confusion_table() -> None:
+    from app.eval.metrics import ResultRow
+
+    rows = [
+        ResultRow(
+            1, "fan_out", True, "FAN-OUT", outcome="escalated", typology="fan out"
+        ),
+        ResultRow(2, "fan_out", True, "STACK", outcome="escalated", typology=None),
+    ]
+    m = compute_metrics(rows)
+    text = render_report(INFO, m, compare(m, baseline_metrics(rows)), rows)
+    assert "Right when named" in text and "## Typology confusion" in text
+    assert "| FAN-OUT | FAN-OUT x1 |" in text and "| STACK | (none) x1 |" in text
+    table = next(ln for ln in text.splitlines() if ln.startswith("| **All**"))
+    assert table.count("|") == 8  # matches the 7-column header

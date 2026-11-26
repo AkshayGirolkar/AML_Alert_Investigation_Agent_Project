@@ -52,7 +52,7 @@ def build_graph(
         grounded = state.get("grounded", False)
         if not grounded and state.get("grounding_retries", 0) <= MAX_GROUNDING_RETRIES:
             return "assess"
-        verdict = Verdict.model_validate(state["verdict"])
+        verdict = Verdict.from_state(state["verdict"])
         return route_verdict(
             verdict,
             grounded,
