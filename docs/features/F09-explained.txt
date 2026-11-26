@@ -1,0 +1,184 @@
+F09 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+After F08 the agent investigates an alert, decides "close" or "escalate", and
+for an escalation a human analyst approves or rejects it. But once a case was
+finished, everything about it was forgotten. The next alert on the same
+customer started from zero.
+
+A real investigator does not work like that. They say: "This customer was
+investigated twice before and cleared for payroll activity", or "We already
+filed a report on this person last month." The project plan calls this
+long-term memory: the agent keeps a history per customer, including what the
+analyst decided and why.
+
+F09 adds that memory.
+
+
+2. THE PROBLEM F09 SOLVES
+-------------------------
+  - The agent has no past. Each alert is judged as if the customer had never
+    been seen, even when an analyst already ruled on a near-identical alert.
+  - Analyst feedback is lost. If an analyst rejected an escalation with a
+    note ("this is payroll"), nothing carries that forward.
+  - Past outcomes must not become "proof". A previous case is a hint, not
+    evidence. If the agent could cite it as evidence, one wrong old verdict
+    could make a new one look justified.
+  - A customer who was already escalated and approved by an analyst must
+    never be quietly closed by the agent next time.
+
+
+3. HOW F09 SOLVES IT
+--------------------
+Think of the restaurant again. Short-term memory is the order ticket for one
+table: it lives only while that table is being served (that is the checkpoint
+from F07). Long-term memory is the regulars' card file by the door. When a
+regular walks in, the waiter checks the card ("allergic to nuts, loved the
+fish") before taking the order, and after the meal writes a new line on it.
+
+  Recall    Right after the customer's KYC profile is loaded, a new step
+            "recall_history" looks up that customer's card and loads their
+            most recent past cases (newest first, a limited number).
+  Use       The history is added to the planning and assessment prompts as
+            background context. The prompt says clearly: this is context,
+            NOT evidence, and must not be cited.
+  Rule      One hard rule is NOT left to the AI: if the customer has a past
+            escalation that an analyst approved, the agent is not allowed to
+            auto-close the new alert. It has to go to a human. (A past
+            rejection does not block anything.)
+  Write     At the very end of the investigation, a new step "write_memory"
+            adds one line to the card: the outcome, the verdict, and, if a
+            human reviewed it, the analyst's decision, name and notes. This
+            happens at the end of BOTH paths: auto-closed cases, and cases
+            that went through analyst review.
+
+The card is keyed by customer (the KYC entity id, or the account number if
+there is no profile) and each line is keyed by alert ("alert-123").
+
+
+FILES ADDED UNDER app/ AND tests/
+---------------------------------
+agent/memory.py
+    The card file itself. Functions to read a customer's history, write a
+    record, build the record from the final state, and turn history into
+    prompt text. (Analogy: the card file and the pen.)
+
+tests/unit/test_agent_memory.py
+    Fast tests with an in-memory store: recall, write, isolation between
+    customers, overwrite behaviour, the auto-close block.
+
+tests/integration/test_agent_memory.py
+    The same ideas against the real Postgres store.
+
+
+FILES CHANGED IN app/
+---------------------
+agent/graph.py
+    Two new steps in the graph: recall_history (after load_kyc) and
+    write_memory (last step on both the close path and the review path).
+    Building the graph with no store makes both steps do nothing.
+
+agent/nodes.py
+    The recall_history and write_memory steps. Recall failure is tolerated;
+    write failure is not (see safety rules).
+
+agent/state.py
+    One new field, "history", the recalled past cases.
+
+agent/prompts.py
+    The plan and assess prompts now include the history, labelled as context
+    and not evidence.
+
+agent/routing.py
+    The hard rule: a prior analyst-approved escalation blocks auto-close.
+    It sits next to the existing "some rules never auto-close" check.
+
+agent/run.py
+    The command-line tool gets memory. By default it forgets between runs;
+    pass --memory-pg to keep memory in Postgres.
+
+config.py, .env.example
+    Settings: how many past cases to recall, and the switch for the
+    auto-close block (memory_block_auto_close_on_prior_sar).
+
+worker/main.py
+    The worker opens the Postgres store next to the checkpointer. Its tables
+    are created by store.setup(), so there is no new Alembic migration.
+
+
+OTHER FILES ADDED OR CHANGED FOR F09
+------------------------------------
+docs/features/F09-long-term-memory.md   The spec: scope, interfaces, done-when.
+docs/adr/0003-f09-long-term-memory.md   Why the choices were made.
+CLAUDE.md                               Short notes on how memory works.
+
+
+WHAT A MEMORY RECORD LOOKS LIKE
+-------------------------------
+  alert_id, rule_id, outcome, disposition, typology, risk_score, confidence,
+  decision, analyst_id, analyst_notes, recorded_at
+
+For alerts the agent closed alone, decision / analyst_id / analyst_notes are
+empty. The IBM ground-truth label and typology are NEVER stored, otherwise the
+evaluation would leak the answers into later prompts.
+
+
+A WORKED EXAMPLE
+----------------
+  1. Alert 100 on customer X: the agent escalates, drafts a SAR and pauses.
+     An analyst approves it with the note "confirmed structuring".
+  2. write_memory adds a line under customer X, key "alert-100": outcome
+     escalated, decision approve, analyst note included.
+  3. Later, alert 200 arrives on customer X. recall_history loads the alert-100
+     line. The prompts now mention it as background.
+  4. Even if the agent thinks alert 200 is low risk with high confidence, the
+     hard rule sees the prior approved escalation and refuses to auto-close.
+     The case goes to human review instead.
+  5. If the agent tries to cite the old case as evidence, the grounding check
+     rejects it like any unknown evidence ID.
+  6. Alert 300 on a different customer Y sees none of this. History never
+     crosses customers.
+
+
+SAFETY RULES BUILT IN
+---------------------
+  - History is context, not evidence. It has no evidence IDs, so the
+    grounding check is untouched and memory cannot make a weak verdict look
+    grounded.
+  - The important rule is code, not prompt. Blocking auto-close after a prior
+    approved SAR does not depend on the AI remembering to be careful.
+  - Writing is repeatable. The key is the alert number, so writing twice (SQS
+    redelivery, a worker crash and resume) overwrites instead of duplicating.
+  - Recall fails soft. If the store is down, the investigation continues with
+    no history. That is still a valid investigation.
+  - Write fails loud. If the write fails, the message is retried, because
+    losing an analyst's feedback silently is worse than a retry.
+  - No ground truth is stored.
+  - One customer's history is never shown for another.
+
+
+WHERE THIS FITS
+---------------
+  F08 analyst approval and resume  ->  F09 long-term memory (done)
+  ->  F10 Redis (cache, rate limiter, case locks)
+
+F08 gave the analyst the final word. F09 makes sure that word is remembered.
+F10 adds the per-customer lock that fixes the first limitation below.
+
+
+KNOWN LIMITATIONS
+-----------------
+  - Two alerts on the same customer running at the same time do not see each
+    other. Memory is read at the start and written at the end. A per-customer
+    lock belongs to F10.
+  - A case waiting for review is not in memory until the analyst decides.
+  - It is plain lookup, not similarity search. "Cases that look like this one"
+    (pgvector) is not built.
+  - Memory grows forever. There is no expiry yet.
+  - Only the agent's side and the analyst's decision are remembered. There is
+    no analyst screen for viewing or correcting memory (F14).
+  - Review of "high risk" closures is still not built, so those outcomes only
+    reach memory as auto-closed lines.
+  - The command-line tool forgets between runs unless --memory-pg is used.
