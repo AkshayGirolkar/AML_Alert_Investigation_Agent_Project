@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -64,6 +65,13 @@ class Settings(BaseSettings):
     llm_backoff_base_seconds: float = 1.0
     llm_backoff_max_seconds: float = 20.0
     llm_case_budget_usd: float = 1.0  # 0 = no cap; over it the case goes to a human
+
+    # F16 load test: "fake" swaps OpenAI for the deterministic SyntheticLLM (no cost)
+    llm_provider: Literal["openai", "fake"] = "openai"
+    fake_llm_latency_ms: float = 1500.0
+    fake_llm_jitter_ms: float = 0.0
+    fake_llm_error_rate: float = 0.0  # share of calls that raise a transient error
+    fake_llm_escalate_pct: int = 30  # share of alerts the fake verdict escalates
 
     # F13 observability
     log_format: str = "text"  # "json" for structured logs (docker/ECS)

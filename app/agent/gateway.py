@@ -266,14 +266,33 @@ def build_gateway(
     recorder: UsageRecorder | None = None,
     limiter: Limiter | None = None,
 ) -> GatewayLLM:
-    """OpenAI primary; a second OpenAI model (same key) as fallback when it differs."""
+    """OpenAI primary; a second OpenAI model (same key) as fallback when it differs.
+
+    `llm_provider=fake` (F16 load tests) uses the SyntheticLLM instead, no fallback.
+    """
     from app.agent.llm import OpenAILLM
 
-    key = settings.openai_api_key
+    primary: Provider
+    fallback: Provider | None
+    if settings.llm_provider == "fake":
+        from app.agent.synthetic_llm import SyntheticLLM
+
+        primary = SyntheticLLM(
+            settings.fake_llm_latency_ms,
+            settings.fake_llm_jitter_ms,
+            settings.fake_llm_error_rate,
+            settings.fake_llm_escalate_pct,
+            settings.seed,
+        )
+        fallback = None
+    else:
+        key = settings.openai_api_key
+        primary = OpenAILLM(model, key)
+        fallback = OpenAILLM(fallback_model, key) if fallback_model != model else None
     return GatewayLLM(
         node,
-        OpenAILLM(model, key),
-        OpenAILLM(fallback_model, key) if fallback_model != model else None,
+        primary,
+        fallback,
         Policy(
             settings.llm_timeout_seconds,
             settings.llm_max_retries,

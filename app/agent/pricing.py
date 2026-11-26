@@ -13,6 +13,7 @@ log = logging.getLogger(__name__)
 PRICES: dict[str, tuple[float, float]] = {
     "gpt-4o": (2.50, 10.00),
     "gpt-4o-mini": (0.15, 0.60),
+    "synthetic-llm": (0.15, 0.60),  # F16 fake provider: billed like gpt-4o-mini
 }
 
 _warned: set[str] = set()
