@@ -1,0 +1,52 @@
+F14 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+Analysts need a screen: a queue of alerts, a page per case showing what the agent
+found, and Approve / Reject buttons. Until now they had to use curl or Swagger.
+
+2. THE CONSTRAINT
+-----------------
+The console is meant to look like an older system from another team. So it lives in
+its own repo (~/aml-console), uses a different stack (React + Node) and may share
+only the database with the agent. It never calls the agent's API.
+
+3. WHAT WAS BUILT (in ~/aml-console)
+------------------------------------
+- Middleware (Node + Fastify): login with a signed cookie, then a small JSON API
+  that reads the console.v_* views and writes one row into console.requests when an
+  analyst clicks Investigate, Approve or Reject. The analyst's name always comes
+  from the login, never from the browser.
+- UI (React): login page, alert queue (filters, paging, refreshes by itself), and a
+  case page with the customer, the agent's verdict, clickable evidence it cited, the
+  draft SAR, the decision and the transactions behind the alert.
+- Tests: 27 server, 9 UI, and one browser flow (log in, investigate, approve).
+
+4. HOW A CLICK TRAVELS
+----------------------
+Browser -> console server -> INSERT into console.requests -> the agent's worker sees
+the row (it is notified, and also polls) -> applies it with the same code the API
+uses -> marks the request applied -> the browser, polling, shows "Done". For
+Approve, the worker then resumes the paused graph and the case becomes completed.
+If the worker is off, the request stays pending and the UI says it is waiting.
+
+5. WHAT WAS CHECKED FOR REAL
+----------------------------
+Against the real dev database and worker (fake LLM, free): investigate -> case
+awaiting review -> approve in the console -> case completed/escalated, and the
+agent's audit log records the console user as the analyst.
+
+6. THINGS FOUND ALONG THE WAY
+-----------------------------
+- The console_app database role could not log in: no password had been set. It was
+  set locally (not committed).
+- Database times have no timezone; Node read them as local time and shifted them.
+  Fixed by tagging them as UTC.
+- A double click on Approve sent two requests (state was stale between clicks, then
+  a gap before the first poll). A test caught it; fixed with a guard.
+
+7. WHAT IS NOT DONE
+-------------------
+Supervisor role and approval tiers, SSO, push updates, login rate limiting,
+deployment to AWS, and a remote GitHub repo for the console.
