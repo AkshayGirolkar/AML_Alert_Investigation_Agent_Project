@@ -15,5 +15,5 @@ Accepted
 
 ## Consequences
 - `EventSource` in browsers cannot set an Authorization header, so the console's SSE client must use fetch-based streaming.
-- Terraform does not yet create a Cognito pool; until it does, real AWS runs use `AUTH_MODE=off` behind the IP-restricted ALB, or a pool created by hand with `AUTH_JWKS_URL`/`AUTH_ISSUER` set.
+- `infra/cognito.tf` creates the pool, an app client and the two groups behind `enable_cognito` (default false, so the dev stack is unchanged). Users are created with the AWS CLI, not Terraform, so passwords stay out of state. With it on, the smoke test and in-VPC load test need `API_TOKEN`.
 - Token revocation is not checked; tokens are short-lived.

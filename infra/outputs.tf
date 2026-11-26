@@ -25,3 +25,7 @@ output "alb_dns_name" { value = aws_lb.api.dns_name }
 output "cluster_name" { value = aws_ecs_cluster.main.name }
 output "alarm_topic_arn" { value = aws_sns_topic.alarms.arn }
 output "github_deploy_role_arn" { value = length(aws_iam_role.github_deploy) == 0 ? "" : aws_iam_role.github_deploy[0].arn }
+
+output "cognito_user_pool_id" { value = var.enable_cognito ? aws_cognito_user_pool.main[0].id : "" }
+output "cognito_client_id" { value = var.enable_cognito ? aws_cognito_user_pool_client.api[0].id : "" }
+output "cognito_issuer" { value = local.cognito_issuer }

@@ -44,7 +44,8 @@ async def wait_for_status(
 async def run_smoke(
     client: httpx.AsyncClient,
     alert_id: int,
-    analyst_id: str = "smoke-test",
+    analyst_id: str
+    | None = "smoke-test",  # None: the API takes it from the token (F11)
     timeout: float = 300,
     interval: float = 2.0,
 ) -> SmokeResult:
@@ -76,7 +77,7 @@ async def run_smoke(
                 f"/cases/{case_id}/decision",
                 json={
                     "decision": "approve",
-                    "analyst_id": analyst_id,
+                    **({"analyst_id": analyst_id} if analyst_id else {}),
                     "notes": "F17 smoke test",
                 },
             )

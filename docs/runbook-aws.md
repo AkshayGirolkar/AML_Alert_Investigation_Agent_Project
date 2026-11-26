@@ -32,6 +32,7 @@ The API ships with `AUTH_MODE=off`. The ALB is protected only by its security gr
 that IP allow-list while auth is off. To require tokens, set `AUTH_MODE=jwt` with
 `AUTH_JWKS_URL` (`https://cognito-idp.<region>.amazonaws.com/<pool_id>/.well-known/jwks.json`),
 `AUTH_ISSUER` (`https://cognito-idp.<region>.amazonaws.com/<pool_id>`) and `AUTH_AUDIENCE`
-(app client id) in the api task's environment. Create Cognito groups named `analyst` and
-`supervisor`; Terraform does not create the pool yet. Callers then send
+(app client id) in the api task's environment. Setting `enable_cognito = true` in the
+Terraform vars creates the pool, client and the `analyst`/`supervisor` groups and sets these
+variables on the tasks (see `infra/README.md`). Callers then send
 `Authorization: Bearer <access token>`; `scripts.aws_smoke` and `loadtest_run` read `API_TOKEN`.

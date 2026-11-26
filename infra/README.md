@@ -64,3 +64,21 @@ aws ecs run-task --cluster $CLUSTER --launch-type FARGATE --task-definition $CLU
 ```
 
 Results land in `s3://$BUCKET/loadtest/results/`. The ALB admits the NAT gateway's IP for this. CloudWatch samples lag by 1-2 minutes, so read the series as trends.
+
+## API authentication (F11)
+
+Off by default: the API runs `AUTH_MODE=off` and only the ALB security group (`allowed_cidrs`) protects it. Set `enable_cognito = true` (in your tfvars) and apply to create a user pool, an app client and the `analyst` and `supervisor` groups, and to run the api and worker tasks with `AUTH_MODE=jwt` (JWKS URL, issuer and client id come from the pool). Users are created by an administrator, not by Terraform, so no passwords reach state:
+
+```bash
+POOL=$(terraform -chdir=infra output -raw cognito_user_pool_id)
+aws cognito-idp admin-create-user --user-pool-id $POOL --username ana@example.com \
+  --user-attributes Name=email,Value=ana@example.com Name=email_verified,Value=true
+aws cognito-idp admin-set-user-password --user-pool-id $POOL --username ana@example.com \
+  --password '<12+ chars, mixed>' --permanent
+aws cognito-idp admin-add-user-to-group --user-pool-id $POOL --username ana@example.com --group-name analyst  # or supervisor
+
+export API_TOKEN=$(COGNITO_USER=ana@example.com scripts/aws_cognito_token.sh)   # access token, valid 60 min
+.venv/bin/python -m scripts.aws_smoke --api-url $ALB      # sends API_TOKEN
+```
+
+The smoke test and the in-VPC load test call the API, so with Cognito on they need `API_TOKEN` (pass it in the task override environment for the load test). The decision is recorded under the token `username` (for email-login pools Cognito sets this to the user's sub, a UUID); the smoke test then omits `analyst_id`. If the smoke case has risk >= 0.9, approving it needs a supervisor token.
