@@ -68,6 +68,8 @@ F17 (AWS, code complete, not yet applied to a real account; see `docs/adr/0010-f
 
 F11 (auth): `app/auth/` verifies bearer JWTs (RS256 via `AUTH_JWKS_URL` for Cognito, HS256 via `AUTH_JWT_SECRET` for dev only) and maps `cognito:groups` to roles `analyst`/`supervisor`. `AUTH_MODE=off` (default) disables checks and the decision body must carry `analyst_id`; `jwt` protects every case/alert route (not `/health`, `/ready`, `/metrics`), records the token's user as the analyst, and reserves decisions on verdict risk >= `AUTH_SUPERVISOR_MIN_RISK` (0.9) for supervisors. `python -m scripts.mint_token --user ana --role analyst` makes a dev token; scripts calling the API send `API_TOKEN`. `infra/cognito.tf` creates the pool, client and groups when `enable_cognito = true` (off by default; users are created by hand, see `infra/README.md`; `scripts/aws_cognito_token.sh` fetches a token). See `docs/adr/0011-f11-auth-rbac.md`.
 
+F18 (portfolio polish): docs only. `README.md` leads with the eval result; evidence is copied into tracked `docs/results/` and `docs/img/` (the originals in `eval/runs`/`eval/reports` are gitignored), and `tests/unit/test_docs.py` checks doc links and that README headline numbers match `docs/results/eval-full-100-v1.json`, so after a new eval run refresh those files and the README together. Indexes: `docs/adr/README.md`, `docs/features/README.md`; diagrams `docs/architecture.md`; walkthrough `docs/demo.md` (fake LLM, free; recording still pending). See `docs/features/F18-portfolio-polish.md`.
+
 Not built yet: `pyproject.toml`.
 
 Required env in `.env` (never commit): `OPENAI_API_KEY`, `LANGSMITH_API_KEY`, `LANGSMITH_TRACING=true`, optional `ANTHROPIC_API_KEY`. Kaggle download needs `~/.kaggle/kaggle.json`.
