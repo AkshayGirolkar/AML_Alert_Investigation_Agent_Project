@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
 
 
 class Settings(BaseSettings):
@@ -111,21 +112,26 @@ class Settings(BaseSettings):
             r.strip() for r in self.no_auto_close_rules.split(",") if r.strip()
         )
 
+    def _database_url(self, driver: str) -> str:
+        # URL.create escapes the password (RDS-generated ones may contain #, %, ?, :).
+        return URL.create(
+            driver,
+            username=self.postgres_user,
+            password=self.postgres_password,
+            host=self.postgres_host,
+            port=self.postgres_port,
+            database=self.postgres_db,
+        ).render_as_string(hide_password=False)
+
     @property
     def sync_database_url(self) -> str:
         """psycopg URL used by Alembic and the bulk loader."""
-        return (
-            f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
-        )
+        return self._database_url("postgresql+psycopg")
 
     @property
     def async_database_url(self) -> str:
         """asyncpg URL used by the FastAPI app and the worker."""
-        return (
-            f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
-        )
+        return self._database_url("postgresql+asyncpg")
 
     @property
     def db_pool_size(self) -> int:

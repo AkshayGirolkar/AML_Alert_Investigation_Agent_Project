@@ -22,3 +22,20 @@ aws secretsmanager put-secret-value --secret-id aml-agent-dev/langsmith-api-key 
 ```
 
 Local state is used for now (`terraform.tfstate`, gitignored). `terraform destroy` empties the S3 bucket and ECR repo (`destroyable = true`).
+
+## Compute, deploy (PR 3)
+
+`terraform apply` also creates the ALB, ECS cluster and services (at **0 tasks** until an image exists), alarms and autoscaling. Set `alert_email` for alarm mail (confirm the SNS subscription) and `github_repo = "owner/name"` to create the deploy role.
+
+First deploy, after `apply`:
+
+```bash
+# 1. fill the two API-key secrets (above), 2. build and push an image, 3. roll it out:
+export CLUSTER=$(terraform -chdir=infra output -raw cluster_name) AWS_REGION=us-east-1
+export IMAGE=$(terraform -chdir=infra output -raw ecr_repository_url):$(git rev-parse --short HEAD)
+docker build --platform linux/amd64 -t $IMAGE . && docker push $IMAGE
+scripts/aws_deploy.sh
+curl http://$(terraform -chdir=infra output -raw alb_dns_name)/ready     # from an allowed IP
+```
+
+Later deploys run from GitHub (`.github/workflows/deploy.yml`, repo variables `AWS_ROLE_ARN`, `AWS_REGION`, `ECS_CLUSTER`, `ECR_REPOSITORY`). The ALB only admits `allowed_cidrs`, so the workflow waits for ECS `services-stable` instead of curling it.

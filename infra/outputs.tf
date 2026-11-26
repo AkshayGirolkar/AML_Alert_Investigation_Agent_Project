@@ -20,3 +20,8 @@ output "data_bucket" { value = aws_s3_bucket.data.bucket }
 output "openai_secret_arn" { value = aws_secretsmanager_secret.openai_api_key.arn }
 output "langsmith_secret_arn" { value = aws_secretsmanager_secret.langsmith_api_key.arn }
 output "console_db_secret_arn" { value = aws_secretsmanager_secret.console_db_password.arn }
+
+output "alb_dns_name" { value = aws_lb.api.dns_name }
+output "cluster_name" { value = aws_ecs_cluster.main.name }
+output "alarm_topic_arn" { value = aws_sns_topic.alarms.arn }
+output "github_deploy_role_arn" { value = length(aws_iam_role.github_deploy) == 0 ? "" : aws_iam_role.github_deploy[0].arn }

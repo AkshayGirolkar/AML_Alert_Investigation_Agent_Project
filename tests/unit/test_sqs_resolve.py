@@ -50,3 +50,13 @@ def test_redis_accepts_tls_url() -> None:
     s = Settings(postgres_password="x", redis_url="rediss://cache.example:6379/0")  # type: ignore[call-arg]
     r = make_redis(s)
     assert r.connection_pool.connection_class.__name__ == "SSLConnection"
+
+
+def test_database_urls_escape_special_password_chars() -> None:
+    from sqlalchemy.engine import make_url
+
+    pw = "p#ss%w?rd:@/x"
+    s = Settings(postgres_password=pw, postgres_host="db.example")  # type: ignore[call-arg]
+    for url in (s.sync_database_url, s.async_database_url):
+        parsed = make_url(url)
+        assert parsed.password == pw and parsed.host == "db.example"
