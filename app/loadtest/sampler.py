@@ -149,3 +149,89 @@ def docker_probe(containers: list[str]) -> Probe:
         return parse_docker_stats(stdout.decode())
 
     return probe
+
+
+# --- CloudWatch (F17): the AWS stand-in for `docker stats` and pg/redis introspection ---
+
+# id -> (namespace, metric, statistic, dimension builder)
+_CW_METRICS: dict[str, tuple[str, str, str]] = {
+    "worker_cpu_pct": ("AWS/ECS", "CPUUtilization", "Average"),
+    "worker_mem_pct": ("AWS/ECS", "MemoryUtilization", "Average"),
+    "worker_tasks": ("ECS/ContainerInsights", "RunningTaskCount", "Average"),
+    "api_cpu_pct": ("AWS/ECS", "CPUUtilization", "Average"),
+    "queue_visible": ("AWS/SQS", "ApproximateNumberOfMessagesVisible", "Maximum"),
+    "queue_in_flight": ("AWS/SQS", "ApproximateNumberOfMessagesNotVisible", "Maximum"),
+    "rds_cpu_pct": ("AWS/RDS", "CPUUtilization", "Average"),
+    "rds_connections": ("AWS/RDS", "DatabaseConnections", "Maximum"),
+    "redis_cpu_pct": ("AWS/ElastiCache", "EngineCPUUtilization", "Average"),
+}
+
+
+def cloudwatch_queries(
+    cluster: str, queue_name: str, db_id: str, redis_id: str
+) -> list[dict[str, Any]]:
+    """MetricDataQueries for `get_metric_data` (one per sampled series, 60 s period)."""
+    dims: dict[str, list[tuple[str, str]]] = {
+        "worker_cpu_pct": [("ClusterName", cluster), ("ServiceName", "worker")],
+        "worker_mem_pct": [("ClusterName", cluster), ("ServiceName", "worker")],
+        "worker_tasks": [("ClusterName", cluster), ("ServiceName", "worker")],
+        "api_cpu_pct": [("ClusterName", cluster), ("ServiceName", "api")],
+        "queue_visible": [("QueueName", queue_name)],
+        "queue_in_flight": [("QueueName", queue_name)],
+        "rds_cpu_pct": [("DBInstanceIdentifier", db_id)],
+        "rds_connections": [("DBInstanceIdentifier", db_id)],
+        "redis_cpu_pct": [("ReplicationGroupId", redis_id)],
+    }
+    return [
+        {
+            "Id": qid,
+            "MetricStat": {
+                "Metric": {
+                    "Namespace": ns,
+                    "MetricName": metric,
+                    "Dimensions": [{"Name": n, "Value": v} for n, v in dims[qid]],
+                },
+                "Period": 60,
+                "Stat": stat,
+            },
+            "ReturnData": True,
+        }
+        for qid, (ns, metric, stat) in _CW_METRICS.items()
+    ]
+
+
+def parse_cloudwatch(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Latest datapoint per series; a series with no data yet is None."""
+    out: dict[str, Any] = {qid: None for qid in _CW_METRICS}
+    for r in results:
+        stamps = r.get("Timestamps") or []
+        values = r.get("Values") or []
+        if stamps and values:
+            latest = max(range(len(stamps)), key=lambda i: stamps[i])
+            out[r["Id"]] = round(float(values[latest]), 2)
+    return out
+
+
+def cloudwatch_probe(
+    region: str, cluster: str, queue_name: str, db_id: str, redis_id: str
+) -> Probe:
+    """Samples CloudWatch (1-minute resolution, so it lags the run by up to two minutes)."""
+    import boto3  # type: ignore[import-untyped]  # only AWS runs need it
+
+    client = boto3.client("cloudwatch", region_name=region)
+    queries = cloudwatch_queries(cluster, queue_name, db_id, redis_id)
+
+    def read() -> dict[str, Any]:
+        end = time.time()
+        resp = client.get_metric_data(
+            MetricDataQueries=queries,
+            StartTime=end - 600,
+            EndTime=end,
+            ScanBy="TimestampDescending",
+        )
+        return parse_cloudwatch(resp["MetricDataResults"])
+
+    async def probe() -> dict[str, Any]:
+        return await asyncio.to_thread(read)
+
+    return probe
