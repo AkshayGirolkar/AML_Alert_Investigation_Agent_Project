@@ -1,0 +1,84 @@
+F10.5 EXPLAINED SIMPLY
+======================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+After F10 the agent works end to end, but the only way for a person to use it
+is to call our FastAPI endpoints. The plan now is to mimic a real bank: an
+old analyst console, written in other technology (React + Node) years ago,
+and our Python agent added later. The rule is that the two share nothing but
+the database.
+
+2. THE PROBLEM F10.5 SOLVES
+---------------------------
+  - With only a database in common, the console cannot call "start
+    investigation" or "approve", and cannot see evidence, because evidence
+    only lived inside LangGraph's checkpoint.
+  - If the console wrote straight into our tables, it could skip our rules
+    (decide a case that is not waiting, decide twice, skip the audit row).
+  - The console must not see answers it should not have (ground truth).
+
+3. HOW F10.5 SOLVES IT
+----------------------
+Restaurant picture: the console is a front-of-house team that is only allowed
+to use the order window.
+  - The WINDOW: a table `console.requests`. The console drops in a slip
+    ("investigate alert 42", "approve case 17"). It can fill in six fields,
+    nothing else.
+  - The MENU BOARD: three read-only views the console can look at (alert
+    queue, case detail, request status). Ground truth is not on the board.
+  - The EXPEDITOR: the relay, a task inside the worker. It picks up slips,
+    checks them with the same code the API uses, does the work, and writes
+    "done" or "rejected, because..." on the slip.
+  - The BELL: when a slip lands, Postgres rings (LISTEN/NOTIFY) so the relay
+    reacts at once. It also checks every 5 seconds in case the bell was missed.
+  - The console's database login (`console_app`) is allowed to do only those
+    two things.
+
+4. FILES ADDED AND CHANGED
+--------------------------
+Added:
+  alembic/versions/0006_console_contract.py   schema, table, views, trigger, role
+  app/services/case_commands.py               start/decide logic shared by API and relay
+  app/worker/console_relay.py                 the relay
+  docs/console-contract.md                    what the console team needs
+  tests/unit/test_case_commands.py, tests/integration/test_console_contract.py
+Changed:
+  app/api/routes.py     now calls case_commands (same behaviour)
+  app/db/cases.py       stores evidence; audit row can carry extra detail
+  app/db/models.py, app/config.py, app/worker/main.py, .env.example, CLAUDE.md
+
+5. A WORKED EXAMPLE
+-------------------
+An analyst clicks Approve on case 17. The console inserts a request row. The
+bell rings; the relay locks the row (SKIP LOCKED, so a second worker skips
+it), checks case 17 is awaiting review, records the decision and an audit row
+("analyst-7, via console, request id ..."), sends the resume message to SQS,
+and marks the slip "applied". The worker resumes the graph; the case becomes
+completed/escalated; the console sees it by polling the view.
+
+6. SAFETY RULES
+---------------
+  - The console cannot read or change our tables, only the views and one insert.
+  - Our existing rules still decide everything; there is one code path.
+  - Delivery is "at least once" and safe to repeat: a crash after the decision
+    but before "applied" just re-runs the slip and nothing is duplicated.
+  - A slip that keeps failing is rejected after 5 tries so it cannot block others.
+
+7. WHERE IT FITS
+----------------
+Replaces the Streamlit idea for F14. The React/Node console is built later
+against docs/console-contract.md. F11 (JWT in FastAPI) becomes optional because
+the console owns its own login.
+
+8. KNOWN LIMITATIONS
+--------------------
+  - `requested_by` is trusted, not verified: the console says who the analyst
+    is. Fine for a simulation, not for a real bank.
+  - The decision API endpoint still exists, with no auth (as before).
+  - Rolling the migration back leaves the `console_app` role if another
+    database on the same server (the test one) still uses it.
+  - Status is by polling; there is no live push to the console.
+  - The relay does not run if the worker is down: slips wait as "pending".
+  - Not tested against a real console, and LISTEN/NOTIFY was tested only on
+    the local Docker Postgres.

@@ -261,6 +261,8 @@ class Case(Base):
     attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     verdict: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # F10.5: the evidence records the verdict cites, so a console can show them.
+    evidence: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     sar_draft: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     escalation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

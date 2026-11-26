@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     case_lock_ttl_seconds: int = 300  # renewed by the worker heartbeat
     events_ttl_seconds: int = 3600
 
+    # F10.5 console contract: restricted DB role for the separate console, and the relay
+    # that turns its `console.requests` rows into investigations and decisions.
+    console_db_password: str | None = None  # None = the console_app role cannot log in
+    console_relay_enabled: bool = True
+    console_relay_poll_seconds: float = 5.0
+    console_relay_max_attempts: int = 5
+
     # F04 rules engine thresholds (see app/rules/config.py for meaning and validation)
     rule_velocity_window_hours: int = 1
     rule_velocity_min_txns: int = 10
