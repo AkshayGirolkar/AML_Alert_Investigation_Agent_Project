@@ -1,0 +1,8 @@
+{
+  "min_recall": 0.8,
+  "min_typology_recall": 0.5,
+  "min_typology_group_size": 5,
+  "min_grounding_rate": 0.95,
+  "max_mean_cost_usd": 0.05,
+  "max_error_rate": 0.05
+}

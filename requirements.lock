@@ -51,12 +51,18 @@ charset-normalizer==3.5.2
     # via requests
 click==8.5.1
     # via uvicorn
+contourpy==1.4.0
+    # via matplotlib
+cycler==0.12.1
+    # via matplotlib
 distro==1.9.0
     # via langsmith
 faker==40.54.0
     # via -r requirements.txt
 fastapi==0.163.1
     # via -r requirements.txt
+fonttools==4.69.1
+    # via matplotlib
 frozenlist==1.8.0
     # via
     #   aiohttp
@@ -100,6 +106,8 @@ jsonpatch==1.47
     # via langchain-core
 jsonpointer==3.12
     # via jsonpatch
+kiwisolver==1.5.1
+    # via matplotlib
 langchain-core==1.8.0
     # via
     #   -r requirements.txt
@@ -135,11 +143,17 @@ mako==1.4.3
     # via alembic
 markupsafe==3.0.4
     # via mako
+matplotlib==3.11.2
+    # via -r requirements.txt
 multidict==6.9.1
     # via
     #   aiobotocore
     #   aiohttp
     #   yarl
+numpy==2.5.5
+    # via
+    #   contourpy
+    #   matplotlib
 openai==3.51.0
     # via
     #   -r requirements.txt
@@ -157,8 +171,11 @@ packaging==26.3
     # via
     #   langchain-core
     #   langsmith
+    #   matplotlib
 pgvector==0.5.1
     # via -r requirements.txt
+pillow==13.0.0
+    # via matplotlib
 propcache==0.5.4
     # via
     #   aiohttp
@@ -186,10 +203,13 @@ pydantic-core==2.50.4
     # via pydantic
 pydantic-settings==2.16.3
     # via -r requirements.txt
+pyparsing==3.3.3
+    # via matplotlib
 python-dateutil==2.9.0.post0
     # via
     #   aiobotocore
     #   botocore
+    #   matplotlib
 python-dotenv==1.2.4
     # via
     #   -r requirements.txt

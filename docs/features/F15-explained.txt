@@ -1,0 +1,94 @@
+F15 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+The agent investigates alerts and decides close or escalate. Until now nobody
+could say how GOOD it is. "It looks reasonable on a few cases" is not evidence,
+and a missed launderer is the costly mistake. The IBM data tells us the truth
+for every alert, so we can measure exactly.
+
+
+2. THE PROBLEM
+--------------
+  - Which alerts do we test on, and how do we keep the test the same every time?
+  - How do we score without letting the agent see the answers?
+  - What is the fair comparison with "just use the rules"?
+  - How do we stop a future change from quietly making the agent worse?
+
+
+3. HOW IT IS SOLVED (restaurant analogy)
+----------------------------------------
+A cooking exam. The examiner picks 100 dishes once and seals the list (the
+frozen dataset). The cook (agent) is given only the order ticket (alert id),
+never the answer sheet. The examiner then marks each dish against the sheet
+(metrics), compares the cook with a "serve everything" kitchen (rules-only
+baseline) and checks a minimum pass mark (the gate).
+
+
+4. FILES ADDED AND CHANGED
+--------------------------
+  app/eval/dataset.py     picks 50 true + 50 false alerts, spread over the
+                          typologies and rules, same pick every time (seeded).
+  app/eval/runner.py      runs the agent on each alert, several at once. A crash
+                          becomes a "miss" row, never a skipped alert.
+  app/eval/pipeline.py    builds the agent, saves results, writes the report.
+  app/eval/metrics.py     the maths: recall, false closures, precision, typology
+                          accuracy, grounding rate, cost and time, with
+                          confidence intervals (small groups are noisy).
+  app/eval/typology.py    maps the agent's words ("fan in") to IBM names.
+  app/eval/baseline.py    rules-only = escalate every alert; comparison numbers.
+  app/eval/gate.py        pass/fail against eval/thresholds.json.
+  app/eval/report.py      Markdown report and agent-vs-baseline chart.
+  app/eval/store.py       saves runs to Postgres and JSON files.
+  app/eval/langsmith_sync.py  optional upload to LangSmith (masked).
+  alembic 0009            tables eval_runs, eval_results.
+  scripts/eval_build_dataset, eval_run, eval_compare, eval_gate.
+  eval/datasets/eval-100.json, eval/thresholds.json, eval/fixtures/recorded_run.json
+  Removed scripts/eval_batch.py (the throwaway precursor).
+
+
+5. A WORKED EXAMPLE
+-------------------
+`eval_run` takes alert 43267 (a fan-out alert; the truth sheet says it is a
+STACK laundering attempt). The agent sees only "43267". It looks at the
+transactions, decides the amounts fit the customer's normal activity, and
+closes it. The examiner then compares: true alert, closed => a FALSE CLOSURE.
+Over all 100 alerts: 45 of 50 true alerts escalated (recall 90%), and of 81
+escalations 45 were real (precision 55.6%; the rules alone are 50%).
+
+
+6. SAFETY RULES KEPT
+--------------------
+  - The agent never sees ground truth (a test checks what goes into the graph).
+  - Errors count against the agent, not in its favour.
+  - All rates are computed in code, never by the LLM.
+  - Eval writes only its own tables, never cases, decisions or audit_log.
+  - The gate runs on recorded results by default, so tests cost nothing.
+
+
+7. WHERE IT FITS
+----------------
+After F12 (gateway, cost) and F13 (tracing). It reuses F04's labels and
+baseline idea and F12's usage tracking. Next: F16 load test, F17 AWS, and a CI
+workflow that calls scripts.eval_gate.
+
+
+8. KNOWN LIMITATIONS (honest list)
+----------------------------------
+  - First result (gpt-4o-mini plans, gpt-4o decides): recall 90%, precision
+    55.6%, 19% fewer alerts for analysts, 5 launderers missed, grounding 100%,
+    about $0.0175 and 11.5 seconds per case.
+  - Typology accuracy is 0%. The agent usually answers "no typology" on true
+    alerts (its prompt says so), and when it does name one it was wrong. That
+    is a real finding, not a bug in the scorer. The fix belongs to the agent
+    prompt/schema, not F15.
+  - Groups are tiny (5-6 alerts per typology): one miss moves recall 17-20
+    points, so per-typology numbers are only indicative.
+  - The thresholds were set from the same 100 alerts, so they are a regression
+    floor, not proof of generalisation. Tuning needs a held-out set.
+  - Only one model pair was run; the comparison tool exists but was not
+    exercised with two different models.
+  - 1,259 of 2,231 true alerts have no typology label in the IBM data; they
+    count for recall only.
+  - No CI workflow yet, and the LangSmith upload is tested with a fake client.
