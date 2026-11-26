@@ -38,6 +38,22 @@ class OpenAILLM:
         return schema.model_validate(result)
 
 
+class Limiter(Protocol):
+    async def acquire(self, cost: int = 1) -> None: ...
+
+
+class RateLimitedLLM:
+    """Waits for a shared (F10, Redis) rate-limit token before each call."""
+
+    def __init__(self, inner: LLM, limiter: Limiter) -> None:
+        self._inner = inner
+        self._limiter = limiter
+
+    async def structured(self, schema: type[T], messages: Sequence[Message]) -> T:
+        await self._limiter.acquire()
+        return await self._inner.structured(schema, messages)
+
+
 class FakeLLM:
     """Returns queued answers per schema; records every call. For tests."""
 

@@ -16,3 +16,5 @@ uvicorn[standard]>=0.30   # F07 ASGI server
 aioboto3>=13              # F07 async SQS client
 langgraph-checkpoint-postgres>=3.0   # F07 AsyncPostgresSaver
 psycopg-pool>=3.2         # F07 async connection pool for the checkpointer
+
+redis>=5                  # F10 cache, rate limiter, locks, progress events

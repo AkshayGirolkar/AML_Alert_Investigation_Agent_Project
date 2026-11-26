@@ -14,12 +14,15 @@ message and the graph continues with `Command(resume=decision)` from its checkpo
 import asyncio
 import contextlib
 import logging
+from collections.abc import Callable
 from typing import Any, Literal
 
 from langgraph.types import Command
 
 from app.db.cases import CaseStore
 from app.messaging.sqs import InvestigationQueue, QueueMessage
+from app.services.events import EventPublisher
+from app.services.locks import RedisLock, case_lock_key
 
 log = logging.getLogger("worker")
 
@@ -39,7 +42,29 @@ def is_paused(state: dict[str, Any]) -> bool:
     return bool(state.get("__interrupt__"))
 
 
-async def run_graph(graph: Any, alert_id: int) -> dict[str, Any]:
+Publish = Callable[[str, dict[str, Any]], Any]
+
+
+async def _drive(
+    graph: Any, graph_input: Any, config: dict[str, Any], publish: Publish | None
+) -> dict[str, Any]:
+    """Run the graph; with `publish`, stream node updates (F10) so progress is visible."""
+    if publish is None:
+        return await graph.ainvoke(graph_input, config)  # type: ignore[no-any-return]
+    async for chunk in graph.astream(graph_input, config, stream_mode="updates"):
+        for node in chunk:
+            if node != "__interrupt__":
+                await publish("node_finished", {"node": node})
+    snapshot = await graph.aget_state(config)
+    state = dict(snapshot.values)
+    if pending := pending_interrupts(snapshot):
+        state["__interrupt__"] = pending
+    return state
+
+
+async def run_graph(
+    graph: Any, alert_id: int, publish: Publish | None = None
+) -> dict[str, Any]:
     """Start the investigation, or continue it from its checkpoint."""
     config = thread_config(alert_id)
     snapshot = await graph.aget_state(config)
@@ -50,23 +75,26 @@ async def run_graph(graph: Any, alert_id: int) -> dict[str, Any]:
         log.info(
             "alert %s: resuming from checkpoint (next=%s)", alert_id, snapshot.next
         )
-        return await graph.ainvoke(None, config)  # type: ignore[no-any-return]
+        return await _drive(graph, None, config, publish)
     if snapshot.values:  # graph finished earlier; only the DB write was lost
         log.info("alert %s: graph already finished, reusing final state", alert_id)
         return dict(snapshot.values)
-    return await graph.ainvoke({"alert_id": alert_id}, config)  # type: ignore[no-any-return]
+    return await _drive(graph, {"alert_id": alert_id}, config, publish)
 
 
 async def resume_graph(
-    graph: Any, alert_id: int, decision: dict[str, Any]
+    graph: Any,
+    alert_id: int,
+    decision: dict[str, Any],
+    publish: Publish | None = None,
 ) -> dict[str, Any]:
     """Continue a paused graph with the analyst's decision (safe to repeat)."""
     config = thread_config(alert_id)
     snapshot = await graph.aget_state(config)
     if pending_interrupts(snapshot):
-        return await graph.ainvoke(Command(resume=decision), config)  # type: ignore[no-any-return]
+        return await _drive(graph, Command(resume=decision), config, publish)
     if snapshot.next:  # resumed earlier, then crashed before finishing
-        return await graph.ainvoke(None, config)  # type: ignore[no-any-return]
+        return await _drive(graph, None, config, publish)
     if snapshot.values:  # finished earlier; only the DB write was lost
         return dict(snapshot.values)
     raise RuntimeError(f"alert {alert_id}: no checkpoint to resume")
@@ -80,18 +108,38 @@ class Processor:
         queue: InvestigationQueue,
         max_receive_count: int,
         visibility_timeout: int,
+        redis: Any = None,
+        events: EventPublisher | None = None,
+        lock_ttl: int = 300,
     ) -> None:
+        self._redis = redis
+        self._events = events
+        self._lock_ttl = lock_ttl
         self._graph = graph
         self._store = store
         self._queue = queue
         self._max_receive = max_receive_count
         self._visibility = visibility_timeout
 
-    async def _heartbeat(self, receipt: str, case_id: int) -> None:
+    def _publisher(self, case_id: int) -> Publish | None:
+        events = self._events
+        if events is None:
+            return None
+
+        async def publish(type_: str, data: dict[str, Any]) -> None:
+            await events.publish(case_id, type_, data)
+
+        return publish
+
+    async def _heartbeat(
+        self, receipt: str, case_id: int, lock: RedisLock | None = None
+    ) -> None:
         """While a run is in progress: keep the message invisible and the case 'fresh'."""
         while True:
             await asyncio.sleep(self._visibility / 2)
             await self._store.touch(case_id)
+            if lock is not None:
+                await lock.renew()
             await self._queue.change_visibility(receipt, self._visibility)
 
     async def handle(self, msg: QueueMessage) -> Result:
@@ -107,19 +155,33 @@ class Processor:
             log.info("case %s: nothing to do, acknowledging", msg.case_id)
             await self._queue.delete(msg.receipt_handle)
             return "skipped"
-        beat = asyncio.create_task(self._heartbeat(msg.receipt_handle, msg.case_id))
+        lock: RedisLock | None = None
+        if self._redis is not None:
+            lock = RedisLock(self._redis, case_lock_key(msg.case_id), self._lock_ttl)
+            if not await lock.acquire():
+                # Another worker is running this case; leave the message for redelivery.
+                log.info("case %s: locked by another worker", msg.case_id)
+                return "retry"
+        publish = self._publisher(msg.case_id)
+        beat = asyncio.create_task(
+            self._heartbeat(msg.receipt_handle, msg.case_id, lock)
+        )
         result: Result
         try:
+            if publish:
+                await publish("started", {"resume": resume})
             if resume:
-                state = await self._resume(msg)
+                state = await self._resume(msg, publish)
             else:
-                state = await run_graph(self._graph, msg.alert_id)
+                state = await run_graph(self._graph, msg.alert_id, publish)
             if is_paused(state):
                 await self._store.mark_awaiting_review(msg.case_id, state)
                 result = "awaiting_review"
             else:
                 await self._store.complete(msg.case_id, state)
                 result = "completed"
+            if publish:
+                await publish("status", {"status": result})
         except Exception as exc:
             final = msg.receive_count >= self._max_receive
             log.exception("case %s failed (receive %s)", msg.case_id, msg.receive_count)
@@ -129,16 +191,22 @@ class Processor:
                 failed=final,
                 retry_status="awaiting_review" if resume else "queued",
             )
+            if publish:
+                await publish("status", {"status": "failed" if final else "retrying"})
             # Not deleted: SQS redelivers, and moves it to the DLQ after the last try.
             return "failed" if final else "retry"
         finally:
+            if lock is not None:
+                await lock.release()
             beat.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await beat
         await self._queue.delete(msg.receipt_handle)
         return result
 
-    async def _resume(self, msg: QueueMessage) -> dict[str, Any]:
+    async def _resume(
+        self, msg: QueueMessage, publish: Publish | None = None
+    ) -> dict[str, Any]:
         decision = await self._store.get_decision(msg.case_id)
         if decision is None:
             raise RuntimeError(f"case {msg.case_id}: resume without a decision")
@@ -147,4 +215,4 @@ class Processor:
             "analyst_id": decision["analyst_id"],
             "notes": decision["notes"],
         }
-        return await resume_graph(self._graph, msg.alert_id, payload)
+        return await resume_graph(self._graph, msg.alert_id, payload, publish)

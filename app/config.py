@@ -44,6 +44,18 @@ class Settings(BaseSettings):
     sqs_visibility_timeout: int = 300  # seconds; must exceed one investigation
     worker_concurrency: int = 4
 
+    # F10 Redis (sanctions cache, LLM rate limiter, case locks, SSE progress events)
+    redis_url: str = "redis://localhost:6379/0"
+    redis_socket_timeout: float = 2.0  # seconds; an outage must fail fast
+    sanctions_cache_ttl_seconds: int = 3600
+    llm_rate_limit_per_second: float = (
+        5.0  # shared by all workers; keep under the OpenAI limit
+    )
+    llm_rate_limit_burst: int = 10
+    llm_rate_limit_max_wait_seconds: float = 60.0
+    case_lock_ttl_seconds: int = 300  # renewed by the worker heartbeat
+    events_ttl_seconds: int = 3600
+
     # F04 rules engine thresholds (see app/rules/config.py for meaning and validation)
     rule_velocity_window_hours: int = 1
     rule_velocity_min_txns: int = 10

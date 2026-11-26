@@ -8,6 +8,7 @@ import psycopg
 from app.agent.evidence import Evidence, build_evidence
 from app.agent.tools.common import cursor, entity_of, run_tool
 from app.agent.tools.schemas import SanctionsScreenArgs
+from app.services.sanctions_cache import SanctionsCache
 
 TOOL = "sanctions_screen"
 STRONG = 0.9
@@ -18,11 +19,60 @@ def _strength(sim: float) -> str:
     return "strong" if sim >= STRONG else "probable" if sim >= PROBABLE else "weak"
 
 
-async def sanctions_screen(conn: psycopg.AsyncConnection, **params: Any) -> Evidence:
-    return await run_tool(TOOL, SanctionsScreenArgs, params, lambda a: _run(conn, a))
+async def sanctions_screen(
+    conn: psycopg.AsyncConnection, cache: SanctionsCache | None = None, **params: Any
+) -> Evidence:
+    return await run_tool(
+        TOOL, SanctionsScreenArgs, params, lambda a: _run(conn, a, cache)
+    )
 
 
-async def _run(conn: psycopg.AsyncConnection, a: SanctionsScreenArgs) -> Evidence:
+async def _search(cur: Any, name: str, min_similarity: float) -> list[dict[str, Any]]:
+    """Name (trigram index) and alias (scan) search; the part the F10 cache absorbs."""
+    # `name % q` uses the GIN trigram index at the session limit; we set it for this
+    # call and restore it, so a pooled connection is left as we found it.
+    await cur.execute("SELECT show_limit() AS lim")
+    previous = await cur.fetchone()
+    assert previous is not None
+    await cur.execute("SELECT set_limit(%s::real)", (min_similarity,))
+    try:
+        await cur.execute(
+            """
+            SELECT source_id, name, schema_type, countries, dataset,
+                   similarity(name, %(q)s) AS sim
+            FROM sanctions_entities
+            WHERE name %% %(q)s AND similarity(name, %(q)s) >= %(t)s""",
+            {"q": name, "t": min_similarity},
+        )
+        hits: dict[str, dict[str, Any]] = {
+            r["source_id"]: {**r, "matched_on": "name", "matched_text": r["name"]}
+            for r in await cur.fetchall()
+        }
+    finally:
+        with contextlib.suppress(psycopg.Error):
+            await cur.execute("SELECT set_limit(%s::real)", (previous["lim"],))
+    # Aliases have no index, so this is a scan.
+    await cur.execute(
+        """
+        SELECT s.source_id, s.name, s.schema_type, s.countries, s.dataset,
+               al.alias AS matched_text, similarity(al.alias, %(q)s) AS sim
+        FROM sanctions_entities s CROSS JOIN LATERAL unnest(s.aliases) AS al(alias)
+        WHERE similarity(al.alias, %(q)s) >= %(t)s""",
+        {"q": name, "t": min_similarity},
+    )
+    for r in await cur.fetchall():
+        best = hits.get(r["source_id"])
+        if best is None or r["sim"] > best["sim"]:
+            hits[r["source_id"]] = {**r, "matched_on": "alias"}
+    return [
+        {**h, "sim": float(h["sim"])}
+        for h in sorted(hits.values(), key=lambda h: (-h["sim"], h["source_id"]))
+    ]
+
+
+async def _run(
+    conn: psycopg.AsyncConnection, a: SanctionsScreenArgs, cache: SanctionsCache | None
+) -> Evidence:
     args = a.model_dump(mode="json")
     async with cursor(conn) as cur:
         who = await entity_of(cur, a.account_id)
@@ -45,43 +95,14 @@ async def _run(conn: psycopg.AsyncConnection, a: SanctionsScreenArgs) -> Evidenc
         name: str = who["full_name"]
         country: str | None = who["country"]
 
-        # `name % q` uses the GIN trigram index at the session limit; we set it for this
-        # call and restore it, so a pooled connection is left as we found it.
-        await cur.execute("SELECT show_limit() AS lim")
-        previous = await cur.fetchone()
-        assert previous is not None
-        await cur.execute("SELECT set_limit(%s::real)", (a.min_similarity,))
-        try:
-            await cur.execute(
-                """
-                SELECT source_id, name, schema_type, countries, dataset,
-                       similarity(name, %(q)s) AS sim
-                FROM sanctions_entities
-                WHERE name %% %(q)s AND similarity(name, %(q)s) >= %(t)s""",
-                {"q": name, "t": a.min_similarity},
+        if cache is None:
+            all_hits = await _search(cur, name, a.min_similarity)
+        else:
+            all_hits, _ = await cache.get_or_compute(
+                name, a.min_similarity, lambda: _search(cur, name, a.min_similarity)
             )
-            hits: dict[str, dict[str, Any]] = {
-                r["source_id"]: {**r, "matched_on": "name", "matched_text": r["name"]}
-                for r in await cur.fetchall()
-            }
-        finally:
-            with contextlib.suppress(psycopg.Error):
-                await cur.execute("SELECT set_limit(%s::real)", (previous["lim"],))
-        # Aliases have no index, so this is a scan; the F10 cache will absorb repeats.
-        await cur.execute(
-            """
-            SELECT s.source_id, s.name, s.schema_type, s.countries, s.dataset,
-                   al.alias AS matched_text, similarity(al.alias, %(q)s) AS sim
-            FROM sanctions_entities s CROSS JOIN LATERAL unnest(s.aliases) AS al(alias)
-            WHERE similarity(al.alias, %(q)s) >= %(t)s""",
-            {"q": name, "t": a.min_similarity},
-        )
-        for r in await cur.fetchall():
-            best = hits.get(r["source_id"])
-            if best is None or r["sim"] > best["sim"]:
-                hits[r["source_id"]] = {**r, "matched_on": "alias"}
 
-    ranked = sorted(hits.values(), key=lambda h: (-h["sim"], h["source_id"]))[: a.limit]
+    ranked = all_hits[: a.limit]
     matches = []
     for h in ranked:
         countries = [c.lower() for c in (h["countries"] or [])]

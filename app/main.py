@@ -5,6 +5,7 @@
 
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -13,14 +14,22 @@ from app.api.routes import router
 from app.config import get_settings
 from app.db.cases import CaseStore, SqlCaseStore
 from app.messaging.sqs import InvestigationQueue, open_queue
+from app.redis_client import make_redis
 
 
 def create_app(
-    store: CaseStore | None = None, queue: InvestigationQueue | None = None
+    store: CaseStore | None = None,
+    queue: InvestigationQueue | None = None,
+    redis: Any = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         async with AsyncExitStack() as stack:
+            if redis is None:
+                settings = get_settings()
+                client = make_redis(settings)
+                stack.push_async_callback(client.aclose)
+                app.state.redis = client
             if store is None or queue is None:
                 settings = get_settings()
                 engine = create_async_engine(settings.async_database_url)
@@ -31,6 +40,7 @@ def create_app(
             yield
 
     app = FastAPI(title="AML Alert Investigation Agent", lifespan=lifespan)
+    app.state.redis = redis
     if store is not None and queue is not None:  # injected (tests): no lifespan needed
         app.state.store, app.state.queue = store, queue
     app.include_router(router)

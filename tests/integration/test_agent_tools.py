@@ -21,6 +21,7 @@ from app.agent.tools.sanctions import sanctions_screen
 from app.agent.tools.transactions import query_transactions
 from app.config import get_settings
 from app.db.copy import conninfo
+from app.services.sanctions_cache import SanctionsCache
 from app.synth.embeddings import FakeEmbedder
 from tests.integration.test_rules import TEST_DB, World, _alembic, _conn
 
@@ -284,6 +285,32 @@ async def test_sanctions_screen_finds_name_variants(
     order = ["weak", "probable", "strong"]
     assert order.index(top["strength"]) >= order.index(min_strength)
     assert all(m["source_id"] != "NK-2" for m in ev.data["matches"])
+
+
+async def test_sanctions_screen_cache_matches_uncached_and_serves_repeats(
+    w: World, conn: psycopg.AsyncConnection, real_redis: Any
+) -> None:
+    _sanction(w, "NK-1", "Viktor Petrov", countries="ru")
+    _sanction(w, "NK-3", "Ivan Sidorov", aliases=["Viktor Petrow"])
+    a = w.account(country="RU")
+    _set_kyc(w, a, full_name="Viktor Petrov")
+    cache = SanctionsCache(real_redis, 60)
+
+    plain = await sanctions_screen(conn, account_id=a)
+    miss = await sanctions_screen(conn, cache, account_id=a)
+    assert miss.data == plain.data and miss.summary == plain.summary
+    assert len([k async for k in real_redis.scan_iter("sanctions:0:*")]) == 1
+
+    # Prove the repeat comes from Redis: the list is emptied, the answer does not change.
+    with _conn(w.url) as c:
+        c.execute("DELETE FROM sanctions_entities")
+    hit = await sanctions_screen(conn, cache, account_id=a)
+    assert hit.data == plain.data and hit.status == "ok"
+    assert (await sanctions_screen(conn, account_id=a)).status == "empty"
+
+    # `limit` is applied after the cache read, so it still works on a cached entry.
+    one = await sanctions_screen(conn, cache, account_id=a, limit=1)
+    assert len(one.data["matches"]) == 1
 
 
 async def test_sanctions_screen_matches_aliases(

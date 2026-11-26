@@ -337,3 +337,99 @@ async def test_running_case_is_claimed_again_only_when_its_worker_is_dead(
         )
     await store.touch(cid)
     assert await store.claim(cid, 225) is None
+
+
+# ----------------------------------------------------------- F10 progress + locks
+async def _events(redis: Any, case_id: int) -> list[tuple[str, dict[str, Any]]]:
+    import json
+
+    from app.services.events import events_key
+
+    return [
+        (f["type"], json.loads(f["data"]))
+        for _, f in await redis.xrange(events_key(case_id))
+    ]
+
+
+def _proc_f10(graph: Any, store: Any, queue: Any, redis: Any) -> Processor:
+    from app.services.events import EventPublisher
+
+    return Processor(
+        graph, store, queue, 3, 300, redis=redis, events=EventPublisher(redis)
+    )
+
+
+async def test_real_graph_streams_progress_pauses_and_resumes_with_redis(
+    w: World, checkpointer: Any, engine: AsyncEngine, real_redis: Any
+) -> None:
+    from app.services.locks import case_lock_key
+
+    store, queue, llm = SqlCaseStore(engine), _Q(), ScriptedLLM([ESCALATE])
+    alert_id = _alert(w)
+    case, _ = await store.create_or_get(alert_id)
+    cid = case["case_id"]
+    proc = _proc_f10(_graph(w, llm, checkpointer), store, queue, real_redis)
+
+    msg = QueueMessage("r1", cid, alert_id, 1)
+    assert await proc.handle(msg) == "awaiting_review"
+    ev = await _events(real_redis, cid)
+    nodes = [d["node"] for t, d in ev if t == "node_finished"]
+    assert nodes[:3] == ["load_alert", "load_kyc", "recall_history"]
+    assert {"plan", "tool_loop", "assess", "validate_grounding", "draft_sar"} <= set(
+        nodes
+    )
+    assert "write_memory" not in nodes  # paused before it
+    assert ev[0][0] == "started" and ev[-1] == ("status", {"status": "awaiting_review"})
+    row = await store.get(cid)
+    assert row and row["status"] == "awaiting_review"
+    assert row["verdict"]["disposition"] == "escalate" and row["sar_draft"]["narrative"]
+    assert not await real_redis.exists(case_lock_key(cid))
+
+    await store.record_decision(cid, "approve", "ana", "ok")
+    resume = QueueMessage("r2", cid, alert_id, 1, kind="resume")
+    assert await proc.handle(resume) == "completed"
+    ev = await _events(real_redis, cid)
+    assert ev[-1] == ("status", {"status": "completed"})
+    tail = [d["node"] for t, d in ev if t == "node_finished"][len(nodes) :]
+    assert "write_memory" in tail and "plan" not in tail  # only the rest ran
+    done = await store.get(cid)
+    assert done and done["status"] == "completed" and done["outcome"] == "escalated"
+    assert [n for n, _ in llm.prompts].count("InvestigationPlan") == 1
+
+
+async def test_crash_then_retry_with_streaming_resumes_from_checkpoint(
+    w: World, checkpointer: Any, engine: AsyncEngine, real_redis: Any
+) -> None:
+    store, queue, llm = SqlCaseStore(engine), _Q(), CrashOnceLLM([CLOSE])
+    alert_id = _alert(w)
+    case, _ = await store.create_or_get(alert_id)
+    cid = case["case_id"]
+    proc = _proc_f10(_graph(w, llm, checkpointer), store, queue, real_redis)
+
+    assert await proc.handle(QueueMessage("r1", cid, alert_id, 1)) == "retry"
+    ev = await _events(real_redis, cid)
+    assert ev[-1] == ("status", {"status": "retrying"})
+    first_nodes = [d["node"] for t, d in ev if t == "node_finished"]
+    assert "plan" in first_nodes and "assess" not in first_nodes
+
+    assert await proc.handle(QueueMessage("r2", cid, alert_id, 2)) == "completed"
+    ev = await _events(real_redis, cid)
+    second = [d["node"] for t, d in ev if t == "node_finished"][len(first_nodes) :]
+    assert second[0] == "assess" and "plan" not in second  # resumed, not restarted
+    assert ev[-1] == ("status", {"status": "completed"})
+    assert [n for n, _ in llm.prompts].count("InvestigationPlan") == 1
+
+
+async def test_second_worker_cannot_run_a_locked_case(
+    w: World, checkpointer: Any, engine: AsyncEngine, real_redis: Any
+) -> None:
+    from app.services.locks import case_lock_key
+
+    store, queue, llm = SqlCaseStore(engine), _Q(), ScriptedLLM([CLOSE])
+    alert_id = _alert(w)
+    case, _ = await store.create_or_get(alert_id)
+    cid = case["case_id"]
+    await real_redis.set(case_lock_key(cid), "other-worker", px=60_000)
+    proc = _proc_f10(_graph(w, llm, checkpointer), store, queue, real_redis)
+    assert await proc.handle(QueueMessage("r1", cid, alert_id, 1)) == "retry"
+    assert queue.deleted == [] and llm.prompts == []

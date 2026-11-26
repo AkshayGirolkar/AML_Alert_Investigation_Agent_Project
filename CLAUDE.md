@@ -15,7 +15,7 @@ Full design (data sources, architecture, LangGraph graph, feature breakdown F00â
 
 ## Things that will trip you up
 
-- **Requirements are partial and unlocked.** `requirements.txt` = runtime libs added feature by feature (so far SQLAlchemy/asyncpg/psycopg/Alembic/pydantic/pgvector/Faker/openai); `requirements-dev.txt` = `-r requirements.txt` plus pytest, ruff, mypy, pre-commit, testcontainers, locust. FastAPI, LangGraph/LangChain, Redis, boto3, Presidio etc. are not listed yet; add each with the feature that needs it. There is no `requirements.lock` yet; the plan is a compiled lock used by Docker and CI.
+- **Requirements are partial and unlocked.** `requirements.txt` = runtime libs added feature by feature (so far SQLAlchemy/asyncpg/psycopg/Alembic/pydantic/pgvector/Faker/openai/FastAPI/LangGraph/redis); `requirements-dev.txt` = `-r requirements.txt` plus pytest, ruff, mypy, pre-commit, testcontainers, locust. FastAPI, LangGraph/LangChain, Redis, boto3, Presidio etc. are not listed yet; add each with the feature that needs it. There is no `requirements.lock` yet; the plan is a compiled lock used by Docker and CI.
 - **Python version:** `.venv` is Python 3.12, matching the design (uv for dependencies). Don't switch to 3.14; LangChain/LangGraph/Presidio may not support it.
 - **Env files:** `.env` holds real secrets (gitignored); `.env.example` is committed with placeholders. Update `.env.example` whenever a new variable is added.
 - Presidio needs `python -m spacy download en_core_web_lg` after install.
@@ -52,6 +52,8 @@ F08 (human review): escalated cases pause at `human_review` (`interrupt()`), sta
 
 F09 (long-term memory): `recall_history` (after `load_kyc`) and `write_memory` (end of both the close and review paths) use an `AsyncPostgresStore` (tables from `store.setup()`, like the checkpointer). Records live under `("customer_history", entity_id)`, key `alert-{id}`; history goes into prompts as context, never evidence, and a prior analyst-approved escalation blocks auto-close (`memory_block_auto_close_on_prior_sar`). `build_graph(..., store=None)` makes memory a no-op. The CLI forgets between runs unless you pass `--memory-pg`. See `docs/adr/0003-f09-long-term-memory.md`.
 
-Not built yet: redis in `docker-compose.yml`, GitHub Actions CI, `pyproject.toml`.
+F10 (Redis): `docker compose up -d redis`. `app/services/` holds `sanctions_cache` (TTL + `sanctions:version`, bumped by `load_sanctions`), `rate_limiter` (Lua token bucket, wrapped by `RateLimitedLLM`), `locks` (`lock:case:{id}`) and `events` (stream `case:{id}:events`, served at `GET /cases/{id}/events`). Redis is never required: every use degrades. Unit tests use `fakeredis`; `tests/integration/test_redis.py` needs a real Redis. See `docs/adr/0004-f10-redis.md`.
+
+Not built yet: GitHub Actions CI, `pyproject.toml`.
 
 Required env in `.env` (never commit): `OPENAI_API_KEY`, `LANGSMITH_API_KEY`, `LANGSMITH_TRACING=true`, optional `ANTHROPIC_API_KEY`. Kaggle download needs `~/.kaggle/kaggle.json`.
