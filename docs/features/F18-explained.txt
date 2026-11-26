@@ -1,0 +1,64 @@
+F18 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+The system works, but a stranger opening the repo sees a 19-line README. Hiring
+managers and reviewers decide in a few minutes whether the work is real. They
+need the result first, a picture of how it fits together, and an honest account
+of what is not finished.
+
+
+2. THE PROBLEM
+--------------
+Facts were scattered over eleven ADRs, many feature specs and files that are
+git-ignored (the eval report and chart lived in a folder git skips). A README
+that quotes numbers can also drift: someone reruns the eval, the README keeps
+the old figures, and nobody notices.
+
+
+3. WHAT F18 BUILDS
+------------------
+- README: headline result first (agent vs "escalate everything"), then the
+  limitations, architecture, load test, how to run, AWS.
+- docs/architecture.md: a system diagram and a diagram of the investigation
+  graph, both written as text (Mermaid) so GitHub draws them.
+- docs/adr/README.md and docs/features/README.md: one-page indexes.
+- docs/demo.md: a five-minute walkthrough of one alert from start to analyst
+  approval. It uses the fake LLM, so it costs nothing, and it was run for real
+  before being written down.
+- docs/results/ and docs/img/: committed copies of the eval run, report, chart
+  and load-test summary, because the originals are git-ignored.
+- tests/unit/test_docs.py: checks every relative link in the docs resolves and
+  that the README's headline numbers equal what the committed eval run computes.
+
+
+4. HOW IT WORKS, STEP BY STEP
+-----------------------------
+1. Copy the evidence into tracked folders (docs/results, docs/img).
+2. Write the README using only numbers found in those files.
+3. The test recomputes recall, precision, grounding, cost and latency from the
+   committed run and fails if the README says something different.
+4. The demo commands were executed against the local stack; the one real case
+   created (alert 208977, case 8951) is still in the dev database.
+
+
+5. WHAT TO KNOW ABOUT THE NUMBERS
+---------------------------------
+- Recall 90% means 45 of 50 true laundering alerts were escalated; 5 were not.
+- Precision 55.6% against 50% for escalate-everything: a small gain.
+- The real saving is workload: 19 alerts fewer for an analyst to read.
+- Typology accuracy is 0%. The prompt tells the model to say "unknown" unless
+  the pattern is obvious. That is stated in the README, not hidden.
+- The thresholds in the eval gate were set on the same 100 alerts, so they only
+  catch regressions; they do not prove the agent generalises.
+- The load test used a fake LLM, so it measures this system, not OpenAI.
+- The AWS code has never been applied to a real account.
+
+
+6. WHAT IS NOT DONE
+-------------------
+- The demo video is not recorded; docs/demo.md has a shot list.
+- Typology prompt fix (needs a held-out split first).
+- The analyst console (F14) is a separate project and not built.
+- Real AWS numbers (needs an apply and a same-day destroy).
