@@ -25,3 +25,13 @@ Apply with `-var llm_provider=fake`, redeploy, run the sweep as the ECS task sho
 1. Download anything you want from S3 (`loadtest/results/`), then `terraform -chdir=infra destroy -var-file=envs/dev.local.tfvars`.
 2. Check nothing billing is left (console or CLI): NAT gateways, Elastic IPs, load balancers, RDS instances and snapshots, ElastiCache clusters, CloudWatch log groups (retention 14 days), ECR repositories, S3 buckets.
 3. Leave `infra/budget` in place.
+
+## API authentication (F11)
+
+The API ships with `AUTH_MODE=off`. The ALB is protected only by its security group, so keep
+that IP allow-list while auth is off. To require tokens, set `AUTH_MODE=jwt` with
+`AUTH_JWKS_URL` (`https://cognito-idp.<region>.amazonaws.com/<pool_id>/.well-known/jwks.json`),
+`AUTH_ISSUER` (`https://cognito-idp.<region>.amazonaws.com/<pool_id>`) and `AUTH_AUDIENCE`
+(app client id) in the api task's environment. Create Cognito groups named `analyst` and
+`supervisor`; Terraform does not create the pool yet. Callers then send
+`Authorization: Bearer <access token>`; `scripts.aws_smoke` and `loadtest_run` read `API_TOKEN`.

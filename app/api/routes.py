@@ -3,17 +3,20 @@
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from redis.exceptions import RedisError
 from sqlalchemy import text
 
 from app.api.schemas import DecisionRequest
+from app.auth.deps import ANY_ROLE
+from app.auth.tokens import Principal
 from app.config import get_settings
 from app.db.cases import CaseStore, public_case
 from app.messaging.sqs import InvestigationQueue
+from app.observability.metrics import metrics
 from app.observability.scrape import scrape
 from app.services import case_commands as commands
 from app.services.events import (
@@ -84,7 +87,11 @@ async def metrics_endpoint(request: Request) -> Response:
     return Response(text_out, media_type="text/plain; version=0.0.4")
 
 
-@router.post("/alerts/{alert_id}/investigations", status_code=202)
+@router.post(
+    "/alerts/{alert_id}/investigations",
+    status_code=202,
+    dependencies=[Depends(ANY_ROLE)],
+)
 async def start_investigation(
     alert_id: int, request: Request, response: Response
 ) -> dict[str, Any]:
@@ -98,7 +105,7 @@ async def start_investigation(
     return public_case(out.case)
 
 
-@router.get("/cases/{case_id}")
+@router.get("/cases/{case_id}", dependencies=[Depends(ANY_ROLE)])
 async def get_case(case_id: int, request: Request) -> dict[str, Any]:
     case = await _store(request).get(case_id)
     if case is None:
@@ -108,26 +115,58 @@ async def get_case(case_id: int, request: Request) -> dict[str, Any]:
     return out
 
 
+def _decider(principal: Principal, claimed: str | None) -> str:
+    """Who is recorded as the analyst: the token's user, never a self-declared name."""
+    if not principal.authenticated:
+        if claimed is None:
+            raise HTTPException(422, "analyst_id is required when auth is off")
+        return claimed
+    if claimed is not None and claimed != principal.username:
+        raise HTTPException(403, "analyst_id does not match the authenticated user")
+    return principal.username
+
+
 def _decision_view(row: dict[str, Any] | None) -> dict[str, Any] | None:
     return public_case(row) if row else None
 
 
 @router.post("/cases/{case_id}/decision")
 async def decide(
-    case_id: int, body: DecisionRequest, request: Request, response: Response
+    case_id: int,
+    body: DecisionRequest,
+    request: Request,
+    response: Response,
+    principal: Annotated[Principal, Depends(ANY_ROLE)],
 ) -> dict[str, Any]:
     """Analyst approves or rejects an escalated case; the worker then resumes the graph.
 
     Safe to repeat: the same decision again returns 200 (and re-sends the resume message
     if the case is still waiting, in case the first send failed).
     """
+    analyst_id = _decider(principal, body.analyst_id)
+    case = await _store(request).get(case_id)
+    if case is not None and not principal.has_role("supervisor"):
+        risk = (case.get("verdict") or {}).get("risk_score")
+        if (
+            isinstance(risk, int | float)
+            and risk >= get_settings().auth_supervisor_min_risk
+        ):
+            metrics.inc("auth_denied_total", reason="supervisor_required")
+            raise HTTPException(
+                403, f"case {case_id} is high risk: a supervisor must decide"
+            )
     out = await commands.record_decision(
         _store(request),
         _queue(request),
         case_id,
         body.decision,
-        body.analyst_id,
+        analyst_id,
         body.notes,
+        audit_extra=(
+            {"roles": sorted(principal.roles), "subject": principal.subject}
+            if principal.authenticated
+            else None
+        ),
     )
     if out.result == "not_found":
         raise HTTPException(404, f"case {case_id} not found")
@@ -146,7 +185,7 @@ async def decide(
     }
 
 
-@router.get("/alerts/{alert_id}/case")
+@router.get("/alerts/{alert_id}/case", dependencies=[Depends(ANY_ROLE)])
 async def get_case_for_alert(alert_id: int, request: Request) -> dict[str, Any]:
     case = await _store(request).get_by_alert(alert_id)
     if case is None:
@@ -163,7 +202,7 @@ def _block_ms() -> int:
     return max(100, min(1000, timeout_ms - 500))
 
 
-@router.get("/cases/{case_id}/events")
+@router.get("/cases/{case_id}/events", dependencies=[Depends(ANY_ROLE)])
 async def case_events(
     case_id: int,
     request: Request,

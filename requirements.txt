@@ -21,3 +21,4 @@ redis>=5                  # F10 cache, rate limiter, locks, progress events
 langsmith>=0.4          # F13 tracing client (masking hooks)
 python-dotenv>=1        # F13 load .env into os.environ for LangSmith
 matplotlib>=3.8        # F15 eval report chart
+pyjwt[crypto]>=2.8        # F11 JWT verification (Cognito RS256 / dev HS256)

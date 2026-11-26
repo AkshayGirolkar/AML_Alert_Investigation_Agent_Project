@@ -13,6 +13,7 @@ from fastapi import FastAPI, Request, Response
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.api.routes import router
+from app.auth.tokens import TokenVerifier, VerifierConfig
 from app.config import get_settings
 from app.db.cases import CaseStore, SqlCaseStore
 from app.messaging.sqs import InvestigationQueue, open_queue
@@ -25,10 +26,13 @@ def create_app(
     store: CaseStore | None = None,
     queue: InvestigationQueue | None = None,
     redis: Any = None,
+    verifier: TokenVerifier | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         async with AsyncExitStack() as stack:
+            if verifier is None:
+                app.state.verifier = _build_verifier()  # misconfiguration fails startup
             if redis is None:
                 settings = get_settings()
                 client = make_redis(settings)
@@ -64,10 +68,26 @@ def create_app(
         return response
 
     app.state.redis = redis
+    app.state.verifier = verifier  # None = auth off (until the lifespan reads settings)
     if store is not None and queue is not None:  # injected (tests): no lifespan needed
         app.state.store, app.state.queue = store, queue
     app.include_router(router)
     return app
+
+
+def _build_verifier() -> TokenVerifier | None:
+    settings = get_settings()
+    if settings.auth_mode == "off":
+        return None
+    return TokenVerifier(
+        VerifierConfig(
+            secret=settings.auth_jwt_secret,
+            jwks_url=settings.auth_jwks_url,
+            issuer=settings.auth_issuer,
+            audience=settings.auth_audience,
+            roles_claim=settings.auth_roles_claim,
+        )
+    )
 
 
 def _init_logging() -> None:

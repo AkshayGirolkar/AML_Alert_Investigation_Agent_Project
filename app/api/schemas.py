@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 class DecisionRequest(BaseModel):
     decision: Literal["approve", "reject"]
-    # No auth until F11, so the caller states who they are.
-    analyst_id: str = Field(min_length=1, max_length=200)
+    # With AUTH_MODE=jwt the analyst is the token's user and this may be omitted (or must
+    # match it). With auth off the caller states who they are.
+    analyst_id: str | None = Field(default=None, min_length=1, max_length=200)
     notes: str | None = Field(default=None, max_length=5000)
