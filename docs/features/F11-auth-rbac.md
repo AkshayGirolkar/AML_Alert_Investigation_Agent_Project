@@ -24,9 +24,11 @@ a verified user instead of a name typed into the request body.
   the API send `API_TOKEN` as a bearer token.
 
 ## Out of scope
-Creating the Cognito user pool, app client and groups (Terraform, a later F17 follow-up);
-login UI and refresh tokens (the console); per-case ownership; the console relay path, which
+Creating Cognito users (done by an administrator with the AWS CLI); login UI and refresh tokens (the console); per-case ownership; the console relay path, which
 authenticates through its own database role (F10.5).
+
+## Follow-up
+`infra/cognito.tf` (flag `enable_cognito`, default off) creates the user pool, app client and the `analyst`/`supervisor` groups and switches the ECS tasks to `AUTH_MODE=jwt`. `scripts/aws_cognito_token.sh` logs in with the AWS CLI. Not validated with `terraform validate` or applied (Terraform is not installed here).
 
 ## Interfaces
 - `TokenVerifier(config).verify(token) -> Principal` or raises `AuthError`.

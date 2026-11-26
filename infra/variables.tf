@@ -166,3 +166,9 @@ variable "github_repo" {
   type        = string
   default     = ""
 }
+
+variable "enable_cognito" {
+  description = "Create a Cognito user pool and run the API with AUTH_MODE=jwt. Off = no API auth (keep allowed_cidrs tight)."
+  type        = bool
+  default     = false
+}

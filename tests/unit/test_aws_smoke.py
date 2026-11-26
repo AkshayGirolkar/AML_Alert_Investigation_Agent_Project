@@ -65,3 +65,20 @@ async def test_wait_for_status_times_out() -> None:
         await wait_for_status(
             get_case, {"completed"}, 3, 1, clock=lambda: t["now"], sleep=sleep
         )
+
+
+async def test_decision_omits_analyst_id_when_none() -> None:
+    """With bearer auth the API takes the analyst from the token (F11)."""
+    bodies: list[bytes] = []
+    inner = _api(["awaiting_review", "running", "completed"])
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path.endswith("/decision"):
+            bodies.append(req.content)
+        return inner.handler(req)  # type: ignore[return-value]
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://t"
+    ) as c:
+        res = await run_smoke(c, 1, analyst_id=None, timeout=5, interval=0)
+    assert res.ok and b"analyst_id" not in bodies[0]

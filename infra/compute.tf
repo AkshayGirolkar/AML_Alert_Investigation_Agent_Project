@@ -8,7 +8,7 @@ locals {
   rds_password = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::"
 
   # AWS_ENDPOINT_URL stays unset: the SDK uses real AWS and the task role.
-  common_env = [
+  common_env = concat([
     { name = "POSTGRES_HOST", value = aws_db_instance.main.address },
     { name = "POSTGRES_PORT", value = "5432" },
     { name = "POSTGRES_USER", value = var.db_username },
@@ -23,7 +23,7 @@ locals {
     { name = "LLM_PROVIDER", value = var.llm_provider },
     { name = "LANGSMITH_TRACING", value = tostring(var.langsmith_tracing) },
     { name = "S3_DATA_BUCKET", value = aws_s3_bucket.data.bucket },
-  ]
+  ], local.auth_env)
 
   common_secrets = [
     { name = "POSTGRES_PASSWORD", valueFrom = local.rds_password },
