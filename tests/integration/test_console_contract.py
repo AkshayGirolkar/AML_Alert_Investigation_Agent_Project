@@ -305,3 +305,37 @@ async def test_two_relays_never_apply_the_same_request_twice(
         _relay(engine, queue).drain(), _relay(engine, queue).drain()
     )
     assert sum(counts) == 6 and len(queue.sent) == 6
+
+
+# ---- v_alert_transactions (0007) ------------------------------------------------------
+
+
+def test_alert_transactions_view_lists_trigger_txns_without_ground_truth(
+    w: World,
+) -> None:
+    from datetime import datetime
+
+    a, b = w.account(), w.account()
+    t1 = w.txn(a, b, datetime(2022, 9, 1, 10, 0), 50.0, laundering=True)
+    t2 = w.txn(b, a, datetime(2022, 9, 1, 11, 0), 75.0)
+    w.txn(a, b, datetime(2022, 9, 1, 12, 0))  # not a trigger transaction
+    with _conn(w.url) as c:
+        row = c.execute(
+            "INSERT INTO alerts (rule_id, account_id, window_start, window_end, "
+            "trigger_txn_ids, score) VALUES ('velocity', %s, now(), now(), %s, 0.9) "
+            "RETURNING alert_id",
+            (a, [t1, t2]),
+        ).fetchone()
+        assert row
+        alert_id = row[0]
+        c.execute("SET ROLE console_app")
+        cur = c.execute(
+            "SELECT * FROM console.v_alert_transactions WHERE alert_id = %s "
+            "ORDER BY ts",
+            (alert_id,),
+        )
+        cols = {d.name for d in cur.description or []}
+        rows = cur.fetchall()
+    assert [r[1] for r in rows] == [t1, t2]
+    assert "is_laundering" not in cols
+    assert {"from_account_number", "to_bank", "amount_paid", "payment_format"} <= cols
