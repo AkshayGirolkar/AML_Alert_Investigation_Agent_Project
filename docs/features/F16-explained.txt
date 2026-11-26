@@ -1,0 +1,116 @@
+F16 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+The system works for one alert at a time. A real bank gets thousands. Before
+anyone trusts it we need to know: how many investigations per minute can it do,
+what runs out first, does it still give correct answers under pressure, and does
+it survive things breaking in the middle of the rush?
+
+
+2. THE PROBLEM
+--------------
+  - Running 1,000 real investigations costs money and mostly measures OpenAI's
+    speed limit, not our system.
+  - "It feels slow" is not a finding. We need numbers we can repeat.
+  - Speed is worthless if cases get done twice, lost, or sent to the dead-letter
+    queue.
+  - A crash during the rush must not lose or repeat work.
+
+
+3. HOW IT IS SOLVED (restaurant analogy)
+----------------------------------------
+A restaurant stress test. We hire a stand-in customer (the fake LLM) who always
+orders, always pays and always takes exactly 1.5 seconds to decide, so the only
+thing being tested is the kitchen. We send the same 1,000 table tickets every
+time (the fixed alert list), at once (burst) or one every few seconds (steady),
+and a clerk with a stopwatch records when each ticket was handed in and when the
+plate left (the metrics). A second clerk walks around every 5 seconds noting how
+hot each stove is (the resource sampler). Then we turn the number of cooks up
+(concurrency 1, 4, 8, 16, 32, 64, two kitchens) and watch which stove burns first.
+Finally we set the fire alarm off on purpose: a cook walks out (worker killed),
+the fridge is unplugged for 20 seconds (Redis down), and one in ten orders gets
+garbled (LLM errors), and we check that every plate still goes out exactly once.
+
+
+4. FILES ADDED AND CHANGED
+--------------------------
+  app/agent/synthetic_llm.py   the stand-in LLM: schema-valid plan/verdict/SAR,
+                               same answer for the same alert, cites real evidence.
+  app/agent/gateway.py         picks it when LLM_PROVIDER=fake (rate limiter,
+                               retries and cost recording still run).
+  app/loadtest/metrics.py      the maths: throughput, latency percentiles,
+                               errors, redeliveries, duplicates, steady window.
+  app/loadtest/seed.py         the fixed list of 1,000 alerts and the reset.
+  app/loadtest/enqueue.py      sends the alerts to the API (burst or steady).
+  app/loadtest/collect.py      reads the results back from the database.
+  app/loadtest/sampler.py      Postgres, queue, Redis and docker samples.
+  app/loadtest/report.py       result file, summary and the sweep table.
+  scripts/loadtest_seed.py     build or reset the alert list.
+  scripts/loadtest_run.py      one run, writes loadtest/results/*.json and .md.
+  scripts/loadtest_sweep.py    the sweep over concurrency and worker counts.
+  scripts/loadtest_drill.py    the three failure drills.
+  loadtest/locustfile.py       the same load as an interactive Locust UI.
+  alembic/versions/0010_...    indexed sanctions aliases (the big fix).
+  app/agent/tools/sanctions.py uses that table.
+  app/config.py, worker/main.py  DB pool size is a setting (auto by default).
+  docker-compose.yml           passes the test knobs to the containers; a second
+                               worker under "--profile scale".
+
+
+5. WORKED EXAMPLE
+-----------------
+The first 1,000-alert run took about 25 minutes (40 cases a minute) and kept the
+database at roughly ten cores' worth of CPU. Timing each tool separately showed
+one of five, the sanctions check, took 4 seconds while the others took under
+half a second. It was scanning 230,000 alias names one by one. We gave the alias
+names an index (like a book's index instead of reading every page). The same
+check went from 2.7 seconds to 9 thousandths of a second and the same 1,000
+alerts finished in 215 seconds (287 a minute), with no errors, no duplicates and
+nothing in the dead-letter queue.
+Then the next limit showed up: the worker kept only 4 database connections for
+its notes, which a rush of 32 at once queued behind. With 16 it did 22% more.
+After that one worker process is simply using one full processor core (about 310
+cases a minute); a second worker does more.
+
+
+6. SAFETY RULES
+---------------
+  - Real OpenAI only with --live and a hard dollar cap; the default is the fake.
+  - The load scripts refuse a database or API that is not local unless --force.
+  - Reset deletes only the load set's own rows and never an eval-set alert.
+  - A run counts as clean only if it drained, has zero duplicates and zero
+    dead-lettered messages. Speed alone never passes.
+  - The 1,000 alerts are never the 100 eval alerts, so load tests cannot disturb
+    the evaluation or the customer memory.
+  - Results always carry the worker settings they were run with.
+
+
+7. WHERE IT FITS
+----------------
+After F15 (how good is the agent) this answers how fast and how robust the
+system around it is. F17 (AWS) reuses the same scripts against the cloud stack
+for a short run, and uses these numbers to choose autoscaling thresholds. F18
+quotes the headline numbers in the README.
+
+
+8. KNOWN LIMITATIONS
+--------------------
+  - Everything ran on one laptop in Docker (8 CPUs, 4 GB), so the numbers compare
+    runs with each other; they are not a capacity promise.
+  - The LLM is fake and fixed at 1.5 s. With the real OpenAI and the default
+    limit of 5 calls a second the system does about 130 cases a minute, so that
+    limit, not anything we found, is what bounds real throughput.
+  - My first explanation of the slow early runs ("cold cache") was wrong: it was
+    the Redis sanctions cache hiding the slow alias scan on repeated names.
+  - The first versions of the redis and worker-kill drills fired before the run
+    had started and then failed on leftover queue messages; they were fixed and
+    rerun, and only the corrected results are reported.
+  - Start time of a case is estimated from its first LLM call (the table has no
+    start time), so queue wait is a little low and run time a little high.
+  - A killed worker's cases wait for the 5-minute SQS visibility timeout before
+    being picked up again. That is correct but slow; a shorter timeout trades
+    recovery time against false redeliveries.
+  - Not done here: Postgres memory tuning, a faster peer_comparison tool, more
+    than two worker processes, and the AWS run (F17).
