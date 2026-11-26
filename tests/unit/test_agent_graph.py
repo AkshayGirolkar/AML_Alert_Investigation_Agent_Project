@@ -386,3 +386,40 @@ async def test_human_review_rejects_an_unknown_decision() -> None:
     bad: Command[Any] = Command(resume={"decision": "maybe", "analyst_id": "a"})
     with pytest.raises(ValueError, match="unknown decision"):
         await graph.ainvoke(bad, cfg)
+
+
+# ------------------------------------------------- F12: budget exhausted -> human
+
+
+class _OverBudget:
+    async def structured(self, schema: Any, messages: Any) -> Any:
+        from app.agent.gateway import CostBudgetExceeded
+
+        raise CostBudgetExceeded("over")
+
+
+def _budget_nodes() -> Nodes:
+    settings = Settings(postgres_password="x")  # type: ignore[call-arg]
+    return Nodes(lambda: nullcontext(), [], _OverBudget(), _OverBudget(), settings)  # type: ignore[arg-type,return-value]
+
+
+async def test_budget_exceeded_in_plan_gives_empty_plan() -> None:
+    out = await _budget_nodes().plan(
+        {"alert": {"alert_id": 1, "account_id": 2}, "kyc": None, "history": []}  # type: ignore[typeddict-item]
+    )
+    assert out == {"plan": []}
+
+
+async def test_budget_exceeded_in_assess_escalates_without_retry() -> None:
+    nodes = _budget_nodes()
+    state: Any = {"alert": {"alert_id": 1, "rule_id": "velocity", "account_id": 2}}
+    state.update(await nodes.assess(state))
+    assert state["verdict"] is None
+    state.update(await nodes.validate_grounding(state))
+    assert state["grounded"] is False
+    from app.agent.nodes import MAX_GROUNDING_RETRIES
+
+    assert state["grounding_retries"] > MAX_GROUNDING_RETRIES  # never re-assessed
+    out = await nodes.draft_sar(state)
+    assert out["outcome"] == "escalated"
+    assert out["escalation_reason"] == "no verdict"

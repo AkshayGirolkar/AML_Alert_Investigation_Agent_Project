@@ -1,10 +1,11 @@
 """Minimal LLM interface for the graph: one structured call.
 
 `OpenAILLM` wraps LangChain's ChatOpenAI; `FakeLLM` replays scripted answers in tests.
-Timeouts, retries and provider fallback belong to F12.
+Timeouts, retries, fallback and cost tracking live in `app/agent/gateway.py` (F12).
 """
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Protocol, TypeVar
 
 from pydantic import BaseModel
@@ -14,28 +15,50 @@ T = TypeVar("T", bound=BaseModel)
 Message = tuple[str, str]  # (role, content), role in {"system", "user"}
 
 
+@dataclass(frozen=True)
+class Usage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
 class LLM(Protocol):
     async def structured(self, schema: type[T], messages: Sequence[Message]) -> T: ...
 
 
 class OpenAILLM:
+    name = "openai"
+
     def __init__(self, model: str, api_key: str, temperature: float = 0.0) -> None:
         from langchain_openai import ChatOpenAI
 
+        self.model = model
+        # Retries and timeouts are the gateway's job, so the client must not hide them.
         self._chat = ChatOpenAI(
             model=model,
             api_key=api_key,  # type: ignore[arg-type]
             temperature=temperature,
+            max_retries=0,
         )
 
-    async def structured(self, schema: type[T], messages: Sequence[Message]) -> T:
+    async def structured_with_usage(
+        self, schema: type[T], messages: Sequence[Message]
+    ) -> tuple[T, Usage]:
         # function_calling, not OpenAI's strict json_schema mode: the plan's free-form
         # `args` dict is rejected there. We validate the result with pydantic below.
-        runnable = self._chat.with_structured_output(schema, method="function_calling")
-        result = await runnable.ainvoke(list(messages))
-        if isinstance(result, schema):
-            return result
-        return schema.model_validate(result)
+        runnable = self._chat.with_structured_output(
+            schema, method="function_calling", include_raw=True
+        )
+        out = await runnable.ainvoke(list(messages))
+        if out.get("parsing_error") is not None:
+            raise out["parsing_error"]
+        parsed = out["parsed"]
+        result = parsed if isinstance(parsed, schema) else schema.model_validate(parsed)
+        meta = getattr(out.get("raw"), "usage_metadata", None) or {}
+        return result, Usage(meta.get("input_tokens", 0), meta.get("output_tokens", 0))
+
+    async def structured(self, schema: type[T], messages: Sequence[Message]) -> T:
+        result, _ = await self.structured_with_usage(schema, messages)
+        return result
 
 
 class Limiter(Protocol):

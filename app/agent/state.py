@@ -16,6 +16,7 @@ class InvestigationState(TypedDict, total=False):
     grounded: bool
     grounding_errors: list[str]
     grounding_retries: int
+    budget_exceeded: bool  # F12: case hit its LLM cost cap, so no verdict was made
     outcome: Literal["closed", "escalated"]
     escalation_reason: str | None  # why it was not auto-closed (None when closed)
     sar_draft: dict[str, Any] | None

@@ -12,11 +12,14 @@ from psycopg.rows import dict_row
 
 from app.agent import prompts
 from app.agent.evidence import Evidence
+from app.agent.gateway import CostBudgetExceeded
 from app.agent.llm import LLM
 from app.agent.memory import CustomerMemory, has_prior_approved_sar
 from app.agent.routing import alert_context, check_grounding, escalation_reason
 from app.agent.schemas import InvestigationPlan, SarDraft, Verdict
 from app.agent.state import InvestigationState
+
+MAX_GROUNDING_RETRIES = 1  # one re-assess after a failed grounding check
 from app.agent.tools.registry import ConnFactory
 from app.config import Settings
 
@@ -117,23 +120,28 @@ class Nodes:
             f"- {t.name}: {t.description} args={json.dumps(t.args)}"
             for t in self._tools.values()
         )
-        plan = await self._plan_llm.structured(
-            InvestigationPlan,
-            [
-                (
-                    "system",
-                    prompts.PLAN_SYSTEM.format(
-                        max_calls=self._settings.max_tool_calls, tools=tools
+        try:
+            plan = await self._plan_llm.structured(
+                InvestigationPlan,
+                [
+                    (
+                        "system",
+                        prompts.PLAN_SYSTEM.format(
+                            max_calls=self._settings.max_tool_calls, tools=tools
+                        ),
                     ),
-                ),
-                (
-                    "user",
-                    prompts.plan_user(
-                        state["alert"], state.get("kyc"), state.get("history")
+                    (
+                        "user",
+                        prompts.plan_user(
+                            state["alert"], state.get("kyc"), state.get("history")
+                        ),
                     ),
-                ),
-            ],
-        )
+                ],
+            )
+        except CostBudgetExceeded:
+            return {
+                "plan": []
+            }  # out of budget: no checks; assess will hand it to a human
         return {"plan": [c.model_dump() for c in plan.checks]}
 
     async def tool_loop(self, state: InvestigationState) -> InvestigationState:
@@ -164,25 +172,37 @@ class Nodes:
         return {"evidence": evidence, "tool_calls": calls, "skipped_checks": skipped}
 
     async def assess(self, state: InvestigationState) -> InvestigationState:
-        verdict = await self._assess_llm.structured(
-            Verdict,
-            [
-                ("system", prompts.ASSESS_SYSTEM),
-                (
-                    "user",
-                    prompts.assess_user(
-                        state["alert"],
-                        state.get("kyc"),
-                        state.get("evidence", []),
-                        state.get("grounding_errors", []),
-                        state.get("history"),
+        try:
+            verdict = await self._assess_llm.structured(
+                Verdict,
+                [
+                    ("system", prompts.ASSESS_SYSTEM),
+                    (
+                        "user",
+                        prompts.assess_user(
+                            state["alert"],
+                            state.get("kyc"),
+                            state.get("evidence", []),
+                            state.get("grounding_errors", []),
+                            state.get("history"),
+                        ),
                     ),
-                ),
-            ],
-        )
+                ],
+            )
+        except CostBudgetExceeded:
+            # F12: no verdict. validate_grounding turns this into an escalation.
+            return {"verdict": None, "budget_exceeded": True}
         return {"verdict": verdict.model_dump()}
 
     async def validate_grounding(self, state: InvestigationState) -> InvestigationState:
+        if (
+            state.get("verdict") is None
+        ):  # budget exhausted: never retry, a human decides
+            return {
+                "grounded": False,
+                "grounding_errors": ["LLM cost budget exceeded; no verdict"],
+                "grounding_retries": MAX_GROUNDING_RETRIES + 1,
+            }
         verdict = Verdict.model_validate(state["verdict"])
         problems = check_grounding(verdict, state.get("evidence", []))
         retries = state.get("grounding_retries", 0) + (1 if problems else 0)
@@ -213,19 +233,24 @@ class Nodes:
         # If the model itself judged the alert benign (policy forced the escalation),
         # do not ask it to write a suspicious-activity narrative; state the reason.
         if state.get("grounded") and verdict.get("disposition") == "escalate":
-            draft = await self._assess_llm.structured(
-                SarDraft,
-                [
-                    ("system", prompts.SAR_SYSTEM),
-                    (
-                        "user",
-                        prompts.sar_user(
-                            state["alert"], state.get("kyc"), verdict, evidence
+            try:
+                draft = await self._assess_llm.structured(
+                    SarDraft,
+                    [
+                        ("system", prompts.SAR_SYSTEM),
+                        (
+                            "user",
+                            prompts.sar_user(
+                                state["alert"], state.get("kyc"), verdict, evidence
+                            ),
                         ),
-                    ),
-                ],
-            )
-            if not set(draft.evidence_ids) <= known or not draft.evidence_ids:
+                    ],
+                )
+            except CostBudgetExceeded:
+                draft = None  # deterministic fallback draft below
+            if draft is not None and (
+                not set(draft.evidence_ids) <= known or not draft.evidence_ids
+            ):
                 draft = None  # the narrative cites something we cannot back up
         if draft is None:
             draft = _fallback_sar(state, reason)

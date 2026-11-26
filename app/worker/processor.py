@@ -19,6 +19,7 @@ from typing import Any, Literal
 
 from langgraph.types import Command
 
+from app.agent.gateway import case_scope
 from app.db.cases import CaseStore
 from app.messaging.sqs import InvestigationQueue, QueueMessage
 from app.services.events import EventPublisher
@@ -170,10 +171,11 @@ class Processor:
         try:
             if publish:
                 await publish("started", {"resume": resume})
-            if resume:
-                state = await self._resume(msg, publish)
-            else:
-                state = await run_graph(self._graph, msg.alert_id, publish)
+            with case_scope(msg.case_id):  # F12: attributes LLM usage to this case
+                if resume:
+                    state = await self._resume(msg, publish)
+                else:
+                    state = await run_graph(self._graph, msg.alert_id, publish)
             if is_paused(state):
                 await self._store.mark_awaiting_review(msg.case_id, state)
                 result = "awaiting_review"

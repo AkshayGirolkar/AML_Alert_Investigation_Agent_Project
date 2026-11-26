@@ -16,7 +16,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.store.base import BaseStore
 
 from app.agent.llm import LLM
-from app.agent.nodes import Nodes
+from app.agent.nodes import MAX_GROUNDING_RETRIES, Nodes
 from app.agent.routing import route_verdict
 from app.agent.schemas import Verdict
 from app.agent.state import InvestigationState
@@ -24,8 +24,6 @@ from app.agent.tools.registry import ConnFactory, build_tools
 from app.config import Settings, get_settings
 from app.services.sanctions_cache import SanctionsCache
 from app.synth.embeddings import Embedder
-
-MAX_GROUNDING_RETRIES = 1
 
 
 def build_graph(

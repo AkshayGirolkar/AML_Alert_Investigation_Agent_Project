@@ -15,9 +15,11 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from app.agent.gateway import build_gateway
 from app.agent.graph import build_graph
-from app.agent.llm import LLM, OpenAILLM, RateLimitedLLM
+from app.agent.llm import LLM
 from app.agent.tools.registry import make_conn_factory
+from app.agent.usage_store import SqlUsageRecorder
 from app.config import Settings, get_settings
 from app.db.cases import SqlCaseStore
 from app.db.copy import conninfo
@@ -87,9 +89,11 @@ async def run(settings: Settings) -> None:
         settings.llm_rate_limit_max_wait_seconds,
     )
 
-    def llm(model: str) -> LLM:
+    recorder = SqlUsageRecorder(engine)
+
+    def llm(node: str, model: str, fallback: str) -> LLM:
         assert settings.openai_api_key
-        return RateLimitedLLM(OpenAILLM(model, settings.openai_api_key), limiter)
+        return build_gateway(settings, node, model, fallback, recorder, limiter)
 
     try:
         checkpointer = AsyncPostgresSaver(pool)  # type: ignore[arg-type]
@@ -98,8 +102,12 @@ async def run(settings: Settings) -> None:
         await store.setup()  # F09 long-term memory tables
         graph = build_graph(
             make_conn_factory(settings.sync_database_url),
-            plan_llm=llm(settings.llm_plan_model),
-            assess_llm=llm(settings.llm_assess_model),
+            plan_llm=llm(
+                "plan", settings.llm_plan_model, settings.llm_fallback_plan_model
+            ),
+            assess_llm=llm(
+                "assess", settings.llm_assess_model, settings.llm_fallback_assess_model
+            ),
             embedder=OpenAIEmbedder(settings.openai_api_key),
             settings=settings,
             checkpointer=checkpointer,

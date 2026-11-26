@@ -56,6 +56,8 @@ F10 (Redis): `docker compose up -d redis`. `app/services/` holds `sanctions_cach
 
 F10.5 (console contract): a separate console (React + Node, built later in F14's slot, see ADR 0005) shares only the database. Migration 0006 adds schema `console` (views `v_alert_queue`, `v_case_detail`, `v_alert_transactions` (0007), `v_requests`; table `console.requests`; role `console_app`) and `cases.evidence`. `app/worker/console_relay.py` (a task in the worker, `CONSOLE_RELAY_ENABLED`) applies request rows through `app/services/case_commands.py`, the same code the API uses. The console never writes `cases`/`decisions`/`audit_log`. The contract for the console team is `docs/console-contract.md`. The planned Streamlit F14 is replaced by that console; F11 (FastAPI JWT) is optional.
 
+F12 (LLM gateway): `app/agent/gateway.py` `GatewayLLM` wraps the OpenAI providers with timeout, backoff retries on transient errors, fallback to a second model on the same key (`LLM_FALLBACK_*_MODEL`), the F10 rate limiter (one token per real call) and a per-case cost budget (`LLM_CASE_BUDGET_USD`; over it the nodes produce no verdict and the case goes to human review). Usage lands in `llm_calls` (migration 0008, view `llm_case_costs`), attributed by `case_scope(case_id)` set in `Processor.handle`. Costs come from `app/agent/pricing.py` (check prices). Run Python via `.venv/bin/python`: the shell's `python` alias points at another venv. See `docs/adr/0006-f12-llm-gateway.md`.
+
 Not built yet: GitHub Actions CI, `pyproject.toml`.
 
 Required env in `.env` (never commit): `OPENAI_API_KEY`, `LANGSMITH_API_KEY`, `LANGSMITH_TRACING=true`, optional `ANTHROPIC_API_KEY`. Kaggle download needs `~/.kaggle/kaggle.json`.
