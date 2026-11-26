@@ -56,6 +56,15 @@ class Settings(BaseSettings):
     case_lock_ttl_seconds: int = 300  # renewed by the worker heartbeat
     events_ttl_seconds: int = 3600
 
+    # F12 LLM gateway: timeout, retry, fallback model (same OpenAI key), cost budget
+    llm_fallback_plan_model: str = "gpt-4o-mini"
+    llm_fallback_assess_model: str = "gpt-4o-mini"
+    llm_timeout_seconds: float = 60.0
+    llm_max_retries: int = 2  # per model; a model is tried max_retries + 1 times
+    llm_backoff_base_seconds: float = 1.0
+    llm_backoff_max_seconds: float = 20.0
+    llm_case_budget_usd: float = 1.0  # 0 = no cap; over it the case goes to a human
+
     # F10.5 console contract: restricted DB role for the separate console, and the relay
     # that turns its `console.requests` rows into investigations and decisions.
     console_db_password: str | None = None  # None = the console_app role cannot log in

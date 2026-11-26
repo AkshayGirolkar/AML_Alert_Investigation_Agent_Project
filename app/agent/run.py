@@ -15,8 +15,8 @@ from langgraph.store.memory import InMemoryStore
 from langgraph.store.postgres import AsyncPostgresStore
 from langgraph.types import Command
 
+from app.agent.gateway import MemoryRecorder, build_gateway, case_scope
 from app.agent.graph import build_graph
-from app.agent.llm import OpenAILLM
 from app.agent.tools.registry import make_conn_factory
 from app.config import get_settings
 from app.db.copy import conninfo
@@ -43,25 +43,34 @@ def main(argv: list[str] | None = None) -> int:
     if not s.openai_api_key:
         parser.error("OPENAI_API_KEY is not set (see .env.example)")
 
+    recorder = MemoryRecorder()
+
     async def investigate(store: BaseStore) -> dict[str, Any]:
         graph = build_graph(
             make_conn_factory(s.sync_database_url),
-            plan_llm=OpenAILLM(s.llm_plan_model, s.openai_api_key),
-            assess_llm=OpenAILLM(s.llm_assess_model, s.openai_api_key),
+            plan_llm=build_gateway(
+                s, "plan", s.llm_plan_model, s.llm_fallback_plan_model, recorder
+            ),
+            assess_llm=build_gateway(
+                s, "assess", s.llm_assess_model, s.llm_fallback_assess_model, recorder
+            ),
             embedder=OpenAIEmbedder(s.openai_api_key),
             settings=s,
             checkpointer=MemorySaver(),
             store=store,
         )
         config = {"configurable": {"thread_id": f"cli-{args.alert_id}"}}
-        state: dict[str, Any] = await graph.ainvoke({"alert_id": args.alert_id}, config)
-        if state.get("__interrupt__") and args.decision:
-            resume = {
-                "decision": args.decision,
-                "analyst_id": args.analyst_id,
-                "notes": args.notes,
-            }
-            state = await graph.ainvoke(Command(resume=resume), config)
+        with case_scope(args.alert_id):  # CLI has no case row; alert id stands in
+            state: dict[str, Any] = await graph.ainvoke(
+                {"alert_id": args.alert_id}, config
+            )
+            if state.get("__interrupt__") and args.decision:
+                resume = {
+                    "decision": args.decision,
+                    "analyst_id": args.analyst_id,
+                    "notes": args.notes,
+                }
+                state = await graph.ainvoke(Command(resume=resume), config)
         return state
 
     async def main_async() -> dict[str, Any]:
@@ -82,12 +91,21 @@ def main(argv: list[str] | None = None) -> int:
     v = state["verdict"]
     label = "AWAITING REVIEW" if paused else state["outcome"].upper()
     print(f"Alert {args.alert_id}: {label}")
+    if v is None:
+        print("  no verdict: LLM cost budget exceeded, a human must decide")
+    else:
+        print(
+            f"  disposition={v['disposition']} typology={v['typology']} "
+            f"risk={v['risk_score']:.2f} confidence={v['confidence']:.2f} "
+            f"grounded={state['grounded']}"
+        )
+        print(f"  rationale: {v['rationale']}")
     print(
-        f"  disposition={v['disposition']} typology={v['typology']} "
-        f"risk={v['risk_score']:.2f} confidence={v['confidence']:.2f} "
-        f"grounded={state['grounded']}"
+        f"  LLM: {len(recorder.records)} call(s), "
+        f"{sum(r.input_tokens for r in recorder.records)} in / "
+        f"{sum(r.output_tokens for r in recorder.records)} out tokens, "
+        f"${recorder.total_cost:.4f}"
     )
-    print(f"  rationale: {v['rationale']}")
     print(f"  tool calls: {state['tool_calls']}  skipped: {state['skipped_checks']}")
     for e in state["evidence"]:
         print(f"  [{e['evidence_id']}] {e['status']}: {e['summary']}")

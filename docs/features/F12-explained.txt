@@ -1,0 +1,116 @@
+F12 EXPLAINED SIMPLY
+====================
+
+1. WHAT THE OVERALL PROJECT NEEDS
+---------------------------------
+After F10 the system investigates alerts, pauses for analysts, remembers
+customers, and shares work through Redis. But every investigation depends on
+OpenAI answering, and nobody is counting what that costs.
+
+  - If OpenAI is slow, the worker waits forever.
+  - If OpenAI answers "too busy" or "server error" once, the investigation
+    just fails, even though trying again a second later would work.
+  - If one model is down, nothing else is tried.
+  - Nobody can say what one investigation cost.
+
+F12 puts one careful "phone operator" between the graph and OpenAI.
+
+
+2. THE PROBLEM F12 SOLVES
+-------------------------
+  - Hangs: a call that takes too long must be cancelled.
+  - Hiccups: temporary errors should be retried, with pauses that grow
+    (1s, 2s, 4s...) so we do not hammer a struggling service.
+  - Outages: after the retries run out, try a backup model.
+  - Money: record tokens and dollars for every call, and stop a runaway case.
+  - And again: none of this may break the investigation graph. The nodes
+    still call the same one-method interface as before.
+
+
+3. HOW F12 SOLVES IT
+--------------------
+Restaurant analogy: the kitchen orders from a supplier. Before, a cook phoned
+the supplier directly and gave up on the first busy signal. Now there is a
+purchasing manager (GatewayLLM):
+
+  - Waits at most 60 seconds on the phone (timeout).
+  - On "busy" or "server error", waits a little and calls again, up to 3
+    times in total (retry with backoff and a bit of randomness).
+  - If the main supplier (gpt-4o) is still failing, calls the backup
+    (gpt-4o-mini, same account and key).
+  - Does NOT retry "wrong password" or "malformed order": those will fail
+    every time, so they are reported straight away.
+  - Takes a ticket from the shared Redis rate limiter before every real call.
+  - Writes every call into a ledger (table llm_calls): who, which model,
+    tokens in and out, dollars, how long, whether it was a fallback, and any
+    error. The dollars come from a price table in Python, never from the AI.
+  - Has a per-case spending cap (default $1). Over the cap, the case gets no
+    AI verdict and goes to a human analyst, with a plain deterministic draft.
+
+How does the ledger know which case a call belongs to? The worker puts the
+case id on a "sticky note" (a Python context variable) before running the
+graph. The manager reads the note. No graph code had to change for this.
+
+
+4. FILES ADDED AND CHANGED
+--------------------------
+Added:
+  app/agent/gateway.py        GatewayLLM, retry/fallback/budget, case_scope
+  app/agent/pricing.py        price table and cost calculation
+  app/agent/usage_store.py    saves the ledger rows to Postgres
+  alembic/versions/0008_llm_calls.py   llm_calls table + llm_case_costs view
+  tests/unit/test_llm_gateway.py       14 tests with fake providers
+  tests/integration/test_llm_usage.py  ledger against real Postgres
+  docs/adr/0006-f12-llm-gateway.md
+Changed:
+  app/agent/llm.py        OpenAILLM now reports token usage; its own retries off
+  app/agent/nodes.py      plan/assess/draft_sar handle "budget exceeded"
+  app/worker/processor.py wraps each run in case_scope(case_id)
+  app/worker/main.py, app/agent/run.py   build the gateway; CLI prints totals
+  app/config.py, .env.example   new LLM_* settings
+
+
+5. A WORKED EXAMPLE
+-------------------
+Alert 36011 through the CLI: 2 LLM calls (plan with gpt-4o-mini, assess with
+gpt-4o), 4,597 tokens in, 481 out, $0.0101, verdict "close".
+
+Now imagine gpt-4o answers 503 three times in a row during assess: three
+ledger rows with an error and 0 tokens, then a fourth row with the backup
+model and fallback=true. The investigation finishes normally and you can see
+afterwards that the backup was used:
+  SELECT * FROM llm_case_costs WHERE case_id = 42;
+
+
+6. SAFETY RULES
+---------------
+  - Only temporary errors are retried; permanent errors are not.
+  - Cost is computed in Python from known prices. Unknown model = cost 0 plus
+    a warning (so it never breaks a case, but it is untracked).
+  - A failure to write the ledger is logged and ignored.
+  - Over budget never auto-closes a case: no verdict means a human decides.
+  - Same API key as before; nothing new to configure.
+
+
+7. WHERE F12 FITS
+-----------------
+Before: F10 limiter wrapped one raw OpenAI call.
+Now: graph -> GatewayLLM (limiter token, timeout, retry, fallback, ledger) ->
+OpenAI. F13 (observability) can build dashboards on llm_calls, and F15 (evals)
+can report cost per case from llm_case_costs.
+
+
+8. KNOWN LIMITATIONS
+--------------------
+  - The backup is another OpenAI model on the same key, so a complete OpenAI
+    outage or an account-wide rate limit is not covered. The Provider
+    interface is ready for Anthropic or Bedrock later.
+  - Prices in pricing.py are a snapshot from memory of the pricing page; check
+    them before trusting the dollar figures.
+  - The budget is checked before each call, so a case can overshoot by one
+    call. It is per case, not per customer or per day.
+  - If every provider fails, the error (LLMUnavailable) makes the case retry
+    through SQS and eventually reach the DLQ; there is no degraded verdict.
+  - Retries after a worker crash are counted as real spend (they are), so the
+    cap includes wasted attempts.
+  - The old RateLimitedLLM class still exists but is no longer used.
