@@ -1,13 +1,24 @@
 """HTTP routes (F07, F08). Handlers depend on a `CaseStore` and an `InvestigationQueue`."""
 
+import asyncio
+from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
+from redis.exceptions import RedisError
 from sqlalchemy import text
 
 from app.api.schemas import DecisionRequest
+from app.config import get_settings
 from app.db.cases import CaseStore, public_case
 from app.messaging.sqs import InvestigationQueue
+from app.services.events import (
+    TERMINAL_STATUSES,
+    events_key,
+    format_sse,
+    parse_entry,
+)
 
 router = APIRouter()
 
@@ -102,3 +113,67 @@ async def get_case_for_alert(alert_id: int, request: Request) -> dict[str, Any]:
     if case is None:
         raise HTTPException(404, f"no case for alert {alert_id}")
     return public_case(case)
+
+
+SSE_KEEPALIVE_SECONDS = 15
+
+
+def _block_ms() -> int:
+    """XREAD block time: must stay below the Redis socket timeout or the read errors."""
+    timeout_ms = int(get_settings().redis_socket_timeout * 1000)
+    return max(100, min(1000, timeout_ms - 500))
+
+
+@router.get("/cases/{case_id}/events")
+async def case_events(
+    case_id: int,
+    request: Request,
+    last_event_id: str | None = Header(default=None),
+) -> StreamingResponse:
+    """Server-sent progress events for a case (F10).
+
+    Starts with the current status, replays stream entries after `Last-Event-ID`, then
+    follows new ones. Ends once the case is completed, failed or awaiting review.
+    """
+    store, redis = _store(request), request.app.state.redis
+    case = await store.get(case_id)
+    if case is None:
+        raise HTTPException(404, f"case {case_id} not found")
+
+    async def stream() -> AsyncIterator[str]:
+        yield format_sse(None, "status", {"status": case["status"]})
+        if redis is None:
+            return
+        cursor = last_event_id or "0-0"
+        block, last_beat = _block_ms(), asyncio.get_running_loop().time()
+        while not await request.is_disconnected():
+            try:
+                rows = await redis.xread(
+                    {events_key(case_id): cursor}, block=block, count=50
+                )
+            except (RedisError, OSError):
+                yield format_sse(None, "error", {"detail": "event stream unavailable"})
+                return
+            if not rows:
+                now = asyncio.get_running_loop().time()
+                if now - last_beat >= SSE_KEEPALIVE_SECONDS:
+                    last_beat = now
+                    yield ": keepalive\n\n"
+                    current = await store.get(case_id)
+                    if current and current["status"] in TERMINAL_STATUSES:
+                        return
+                continue
+            for _, entries in rows:
+                for entry_id, fields in entries:
+                    cursor = entry_id
+                    ev = parse_entry(entry_id, fields)
+                    yield format_sse(entry_id, ev["type"], ev["data"])
+                    if ev["type"] == "status" and ev["data"].get("status") in {
+                        "completed",
+                        "failed",
+                        "awaiting_review",
+                    }:
+                        return
+            await asyncio.sleep(0)
+
+    return StreamingResponse(stream(), media_type="text/event-stream")

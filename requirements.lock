@@ -196,6 +196,8 @@ pyyaml==6.0.3
     # via
     #   langchain-core
     #   uvicorn
+redis==8.2.0
+    # via -r requirements.txt
 regex==2026.11.9
     # via tiktoken
 requests==2.34.2

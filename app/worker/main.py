@@ -16,12 +16,16 @@ from psycopg_pool import AsyncConnectionPool
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.agent.graph import build_graph
-from app.agent.llm import OpenAILLM
+from app.agent.llm import LLM, OpenAILLM, RateLimitedLLM
 from app.agent.tools.registry import make_conn_factory
 from app.config import Settings, get_settings
 from app.db.cases import SqlCaseStore
 from app.db.copy import conninfo
 from app.messaging.sqs import InvestigationQueue, open_queue
+from app.redis_client import make_redis
+from app.services.events import EventPublisher
+from app.services.rate_limiter import RedisTokenBucket
+from app.services.sanctions_cache import SanctionsCache
 from app.synth.embeddings import OpenAIEmbedder
 from app.worker.processor import Processor
 
@@ -73,6 +77,19 @@ async def run(settings: Settings) -> None:
         open=False,
     )
     await pool.open()
+    redis = make_redis(settings)
+    limiter = RedisTokenBucket(
+        redis,
+        "ratelimit:llm",
+        settings.llm_rate_limit_per_second,
+        settings.llm_rate_limit_burst,
+        settings.llm_rate_limit_max_wait_seconds,
+    )
+
+    def llm(model: str) -> LLM:
+        assert settings.openai_api_key
+        return RateLimitedLLM(OpenAILLM(model, settings.openai_api_key), limiter)
+
     try:
         checkpointer = AsyncPostgresSaver(pool)  # type: ignore[arg-type]
         await checkpointer.setup()  # creates the checkpoint tables if missing
@@ -80,12 +97,13 @@ async def run(settings: Settings) -> None:
         await store.setup()  # F09 long-term memory tables
         graph = build_graph(
             make_conn_factory(settings.sync_database_url),
-            plan_llm=OpenAILLM(settings.llm_plan_model, settings.openai_api_key),
-            assess_llm=OpenAILLM(settings.llm_assess_model, settings.openai_api_key),
+            plan_llm=llm(settings.llm_plan_model),
+            assess_llm=llm(settings.llm_assess_model),
             embedder=OpenAIEmbedder(settings.openai_api_key),
             settings=settings,
             checkpointer=checkpointer,
             store=store,
+            sanctions_cache=SanctionsCache(redis, settings.sanctions_cache_ttl_seconds),
         )
         async with open_queue(settings) as queue:
             processor = Processor(
@@ -94,10 +112,14 @@ async def run(settings: Settings) -> None:
                 queue,
                 settings.sqs_max_receive_count,
                 settings.sqs_visibility_timeout,
+                redis=redis,
+                events=EventPublisher(redis, settings.events_ttl_seconds),
+                lock_ttl=settings.case_lock_ttl_seconds,
             )
             log.info("worker started (concurrency=%d)", settings.worker_concurrency)
             await poll_loop(queue, processor, settings.worker_concurrency, stop)
     finally:
+        await redis.aclose()
         await pool.close()
         await engine.dispose()
 

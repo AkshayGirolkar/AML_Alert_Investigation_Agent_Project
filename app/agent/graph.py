@@ -22,6 +22,7 @@ from app.agent.schemas import Verdict
 from app.agent.state import InvestigationState
 from app.agent.tools.registry import ConnFactory, build_tools
 from app.config import Settings, get_settings
+from app.services.sanctions_cache import SanctionsCache
 from app.synth.embeddings import Embedder
 
 MAX_GROUNDING_RETRIES = 1
@@ -35,11 +36,12 @@ def build_graph(
     settings: Settings | None = None,
     checkpointer: Any = None,
     store: BaseStore | None = None,
+    sanctions_cache: SanctionsCache | None = None,
 ) -> Any:
     settings = settings or get_settings()
     nodes = Nodes(
         conn_factory,
-        build_tools(conn_factory, embedder),
+        build_tools(conn_factory, embedder, sanctions_cache),
         plan_llm,
         assess_llm or plan_llm,
         settings,

@@ -26,6 +26,7 @@ from app.agent.tools.schemas import (
 )
 from app.agent.tools.transactions import query_transactions
 from app.db.copy import conninfo
+from app.services.sanctions_cache import SanctionsCache
 from app.synth.embeddings import Embedder
 
 ConnFactory = Callable[[], AbstractAsyncContextManager[psycopg.AsyncConnection]]
@@ -67,7 +68,9 @@ def _tool(
 
 
 def build_tools(
-    conn_factory: ConnFactory, embedder: Embedder | None = None
+    conn_factory: ConnFactory,
+    embedder: Embedder | None = None,
+    sanctions_cache: SanctionsCache | None = None,
 ) -> list[StructuredTool]:
     return [
         _tool(
@@ -91,7 +94,7 @@ def build_tools(
             "Fuzzy-match the account holder's name against sanctions lists.",
             SanctionsScreenArgs,
             conn_factory,
-            sanctions_screen,
+            lambda conn, **kw: sanctions_screen(conn, sanctions_cache, **kw),
         ),
         _tool(
             "adverse_media",
