@@ -58,6 +58,8 @@ F10.5 (console contract): a separate console (React + Node, built later in F14's
 
 F12 (LLM gateway): `app/agent/gateway.py` `GatewayLLM` wraps the OpenAI providers with timeout, backoff retries on transient errors, fallback to a second model on the same key (`LLM_FALLBACK_*_MODEL`), the F10 rate limiter (one token per real call) and a per-case cost budget (`LLM_CASE_BUDGET_USD`; over it the nodes produce no verdict and the case goes to human review). Usage lands in `llm_calls` (migration 0008, view `llm_case_costs`), attributed by `case_scope(case_id)` set in `Processor.handle`. Costs come from `app/agent/pricing.py` (check prices). Run Python via `.venv/bin/python`: the shell's `python` alias points at another venv. See `docs/adr/0006-f12-llm-gateway.md`.
 
+F13 (observability): `app/observability/` has `logging` (JSON logs, `LOG_FORMAT=json`, `bind_case`/`bind_request` context ids), `pii.mask` (pure regex + known-key masker), `tracing.setup_tracing` (LangSmith client created with the masker as `hide_inputs/outputs/metadata`; off unless `LANGSMITH_TRACING=true` + key; refuses a pre-existing unmasked client), `metrics` (in-process Prometheus-text registry) and `scrape` (DB/SQS gauges read at `GET /metrics`). `GET /ready` reports `degraded` for Redis/SQS trouble. The worker serves its own series on `WORKER_METRICS_PORT`. See `docs/adr/0007-f13-observability.md`.
+
 Not built yet: GitHub Actions CI, `pyproject.toml`.
 
 Required env in `.env` (never commit): `OPENAI_API_KEY`, `LANGSMITH_API_KEY`, `LANGSMITH_TRACING=true`, optional `ANTHROPIC_API_KEY`. Kaggle download needs `~/.kaggle/kaggle.json`.

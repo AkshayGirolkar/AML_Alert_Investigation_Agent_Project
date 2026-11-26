@@ -85,9 +85,30 @@ async def ensure_queues(settings: Settings) -> tuple[str, str]:
 class SqsQueue:
     """Bound to one open client; use `open_queue` to create it."""
 
-    def __init__(self, client: Any, queue_url: str) -> None:
+    def __init__(self, client: Any, queue_url: str, dlq_url: str | None = None) -> None:
         self._sqs = client
         self.queue_url = queue_url
+        self.dlq_url = dlq_url
+
+    async def depths(self) -> tuple[int, int]:
+        """(visible + in-flight messages on the queue, messages in the DLQ) (F13)."""
+
+        async def count(url: str) -> int:
+            resp = await self._sqs.get_queue_attributes(
+                QueueUrl=url,
+                AttributeNames=[
+                    "ApproximateNumberOfMessages",
+                    "ApproximateNumberOfMessagesNotVisible",
+                ],
+            )
+            a = resp["Attributes"]
+            return int(a["ApproximateNumberOfMessages"]) + int(
+                a["ApproximateNumberOfMessagesNotVisible"]
+            )
+
+        return await count(self.queue_url), (
+            await count(self.dlq_url) if self.dlq_url else 0
+        )
 
     async def send(
         self, case_id: int, alert_id: int, kind: str = "investigate"
@@ -147,6 +168,6 @@ class SqsQueue:
 @asynccontextmanager
 async def open_queue(settings: Settings) -> AsyncIterator[SqsQueue]:
     """Open a client and resolve the queue URL (creating the queues if missing)."""
-    url, _ = await ensure_queues(settings)
+    url, dlq_url = await ensure_queues(settings)
     async with sqs_client(settings) as client:
-        yield SqsQueue(client, url)
+        yield SqsQueue(client, url, dlq_url)

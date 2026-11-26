@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from app.agent.llm import Limiter, Message, Usage
 from app.agent.pricing import cost_usd
 from app.config import Settings
+from app.observability.metrics import metrics
 
 log = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
@@ -226,6 +227,12 @@ class GatewayLLM:
         if ctx is None:
             return
         cost = cost_usd(provider.model, usage.input_tokens, usage.output_tokens)
+        lbl = {"node": self._node, "model": provider.model}
+        metrics.observe("llm_call_seconds", time.monotonic() - started, **lbl)
+        metrics.inc("llm_calls_total", error="yes" if error else "no", **lbl)
+        metrics.inc("llm_cost_usd_total", cost, **lbl)
+        metrics.inc("llm_tokens_total", usage.input_tokens, kind="input", **lbl)
+        metrics.inc("llm_tokens_total", usage.output_tokens, kind="output", **lbl)
         ctx.spent += cost
         seq = ctx.seq or 1
         ctx.seq = seq + 1

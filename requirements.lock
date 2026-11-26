@@ -128,7 +128,9 @@ langgraph-prebuilt==1.1.2
 langgraph-sdk==0.4.14
     # via langgraph
 langsmith==0.14.17
-    # via langchain-core
+    # via
+    #   -r requirements.txt
+    #   langchain-core
 mako==1.4.3
     # via alembic
 markupsafe==3.0.4
@@ -190,6 +192,7 @@ python-dateutil==2.9.0.post0
     #   botocore
 python-dotenv==1.2.4
     # via
+    #   -r requirements.txt
     #   pydantic-settings
     #   uvicorn
 pyyaml==6.0.3
